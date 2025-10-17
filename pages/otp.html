@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enter OTP - Flowsec</title>
+    <link rel="stylesheet" href="../css/auth.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Enter OTP</h1>
+        <form id="otp-form">
+            <input type="text" id="otp" placeholder="Enter OTP" required>
+            <button type="submit">Verify</button>
+        </form>
+    </div>
+    <script src="../js/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <script src="../js/supabase-client.js"></script>
+    <script>
+        document.getElementById('otp-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const otp = document.getElementById('otp').value;
+            const email = localStorage.getItem('emailForOtp'); // We need to store email from login page
+            const { error } = await supabaseClient.auth.verifyOtp({ email, token: otp, type: 'email' });
+            if (error) {
+                alert(error.message);
+            } else {
+                window.location.href = 'chat.html';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - Flowsec</title>
+    <link rel="stylesheet" href="../css/chat.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Chat Container -->
+    <div class="chat-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <!-- Sidebar Header -->
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Flowsec</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-icon" id="theme-toggle" title="Toggle Dark Mode">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button class="btn-icon" id="settings-btn" title="Settings">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- User Profile Card -->
+            <div class="user-profile-card">
+                <img src="https://ui-avatars.com/api/?name=User&background=4CAF50&color=fff" alt="Profile" id="user-avatar" class="user-avatar">
+                <div class="user-info">
+                    <h3 id="user-name">Loading...</h3>
+                    <p id="user-status">Online</p>
+                </div>
+                <button class="btn-icon logout-btn" id="logout-btn" title="Sign Out">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="search-bar">
+                <i class="fas fa-search"></i>
+                <input type="text" id="search-users" placeholder="Search users...">
+            </div>
+
+            <!-- Users List -->
+            <div class="users-list" id="users-list">
+                <div class="list-loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading users...</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main">
+            <!-- Chat Header -->
+            <header class="chat-header">
+                <div class="chat-user-info">
+                    <img src="https://ui-avatars.com/api/?name=Select&background=ccc&color=666" alt="User" id="chat-avatar" class="chat-avatar">
+                    <div>
+                        <h2 id="chat-name">Select a user to start chatting</h2>
+                        <p id="chat-status" class="status-text">—</p>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button class="btn-icon" title="Video Call">
+                        <i class="fas fa-video"></i>
+                    </button>
+                    <button class="btn-icon" title="Voice Call">
+                        <i class="fas fa-phone"></i>
+                    </button>
+                    <button class="btn-icon" title="More">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <button class="btn-logout-main" id="logout-btn-main" title="Sign Out">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Sign Out</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Messages Area -->
+            <div class="messages-area" id="messages-area">
+                <div class="empty-chat">
+                    <i class="fas fa-comments"></i>
+                    <h3>No conversation selected</h3>
+                    <p>Choose a user from the sidebar to start chatting</p>
+                </div>
+            </div>
+
+            <!-- Message Input -->
+            <footer class="message-input-area">
+                <button class="btn-icon" title="Attach File">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <button class="btn-icon" title="Emoji">
+                    <i class="fas fa-smile"></i>
+                </button>
+                <input type="text" id="message-input" placeholder="Type a message..." disabled>
+                <button class="btn-send" id="send-btn" disabled>
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Sign Out Confirmation Modal -->
+    <div class="modal-overlay" id="signout-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-icon">
+                    <i class="fas fa-sign-out-alt"></i>
+                </div>
+                <h3>Sign Out?</h3>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to sign out from Flowsec?</p>
+                <div class="modal-info">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Your encryption keys will remain safe on this device</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal-cancel" id="cancel-signout">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+                <button class="btn-modal-confirm" id="confirm-signout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Sign Out
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <script src="../js/supabase-client.js"></script>
+    <script src="../js/encryption.js"></script>
+    <script src="../js/chat.js"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+</body>
+</html>
