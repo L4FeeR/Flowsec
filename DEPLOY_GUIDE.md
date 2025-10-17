@@ -95,8 +95,18 @@ The GitHub Action will automatically deploy on every push to `main` branch!
 
 **Solution:** In Supabase dashboard:
 1. Go to **Authentication → URL Configuration**
-2. Add your GitHub Pages URL to **Site URL**
-3. Add to **Redirect URLs**: `https://YOUR_USERNAME.github.io/flowsec/**`
+2. Add your GitHub Pages URL to **Site URL**: `https://YOUR_USERNAME.github.io/REPO_NAME/`
+3. Add to **Redirect URLs**: 
+   ```
+   https://YOUR_USERNAME.github.io/REPO_NAME/pages/chat.html
+   https://YOUR_USERNAME.github.io/REPO_NAME/pages/complete-profile.html
+   ```
+   
+**Example for username "l4feer" with repo "Flowsec":**
+- Site URL: `https://l4feer.github.io/Flowsec/`
+- Redirect URLs:
+  - `https://l4feer.github.io/Flowsec/pages/chat.html`
+  - `https://l4feer.github.io/Flowsec/pages/complete-profile.html`
 
 ### Issue: Users Can't Sign Up
 

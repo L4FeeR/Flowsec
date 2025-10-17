@@ -23,11 +23,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             console.log('Attempting to send magic link to:', email);
             
+            // Get the correct base URL (handles GitHub Pages with repo name)
+            const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '').replace('/pages', '');
+            
             const { data, error } = await supabaseClient.auth.signInWithOtp({ 
                 email: email,
                 options: {
                     shouldCreateUser: false,
-                    emailRedirectTo: window.location.origin + '/pages/chat.html'
+                    emailRedirectTo: baseUrl + '/pages/chat.html'
                 }
             });
             
@@ -95,12 +98,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 reader.readAsDataURL(profilePic);
             }
             
+            // Get the correct base URL (handles GitHub Pages with repo name)
+            const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '').replace('/pages', '');
+            
             // Send magic link with user metadata
             const { data, error } = await supabaseClient.auth.signInWithOtp({ 
                 email: email,
                 options: {
                     shouldCreateUser: true,
-                    emailRedirectTo: window.location.origin + '/pages/complete-profile.html',
+                    emailRedirectTo: baseUrl + '/pages/complete-profile.html',
                     data: {
                         name: name,
                         username: username,
