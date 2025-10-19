@@ -39,3 +39,21 @@ build/
 # Backup files
 *.bak
 *.backup
+
+# SQL setup files
+*.sql
+
+# Documentation files (except README.md)
+*_EXPLAINED.md
+*_GUIDE.md
+*_FIX.md
+*_SETUP.md
+*_SUMMARY.md
+CHANGES*.md
+DEPLOY*.md
+GITHUB*.md
+JWT*.md
+PASSWORDLESS*.md
+QUICK*.md
+TESTING*.md
+USERS*.md
