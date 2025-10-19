@@ -79,15 +79,17 @@
         <div id="results" class="results"></div>
     </div>
 
-    <script type="module">
-        import { supabaseClient } from '../js/supabase-client.js';
-        window.supabaseClient = supabaseClient;
+    <script src="../js/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Initialize Supabase
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        window.clearResults = function() {
+        function clearResults() {
             document.getElementById('results').innerHTML = '';
         }
         
-        window.checkCurrentUser = async function() {
+        async function checkCurrentUser() {
             const results = document.getElementById('results');
             results.innerHTML = '<div class="info">⏳ Checking current user...</div>';
             
@@ -116,7 +118,7 @@
             }
         }
         
-        window.checkAuth = async function() {
+        async function checkAuth() {
             const results = document.getElementById('results');
             results.innerHTML = '<div class="info">⏳ Checking auth.users table...</div>';
             
@@ -146,7 +148,7 @@
             }
         }
         
-        window.checkProfiles = async function() {
+        async function checkProfiles() {
             const results = document.getElementById('results');
             results.innerHTML = '<div class="info">⏳ Fetching profiles...</div>';
             
