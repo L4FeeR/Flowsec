@@ -12,6 +12,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load theme preference
     loadTheme();
     
+    // Setup automatic token refresh
+    setupTokenRefresh();
+    
     // Check authentication
     await checkAuth();
     
@@ -30,17 +33,62 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('Chat dashboard initialized');
 });
 
+// Setup automatic token refresh
+function setupTokenRefresh() {
+    // Refresh session every 30 minutes
+    setInterval(async () => {
+        console.log('🔄 Refreshing session token...');
+        const { data, error } = await supabaseClient.auth.refreshSession();
+        if (error) {
+            console.error('❌ Token refresh failed:', error);
+            // Redirect to login if refresh fails
+            window.location.href = 'login.html';
+        } else {
+            console.log('✅ Session refreshed successfully');
+        }
+    }, 30 * 60 * 1000); // 30 minutes
+}
+
 // Check if user is authenticated
 async function checkAuth() {
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
-    
-    if (error || !session) {
-        console.log('Not authenticated, redirecting to login...');
+    try {
+        // Try to get current session
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        
+        if (error) {
+            console.error('Session error:', error);
+            
+            // If JWT expired, try to refresh
+            if (error.message?.includes('JWT') || error.message?.includes('expired')) {
+                console.log('🔄 Token expired, attempting refresh...');
+                const { data: refreshData, error: refreshError } = await supabaseClient.auth.refreshSession();
+                
+                if (refreshError || !refreshData.session) {
+                    console.log('❌ Refresh failed, redirecting to login...');
+                    window.location.href = 'login.html';
+                    return;
+                }
+                
+                console.log('✅ Session refreshed successfully');
+                return;
+            }
+            
+            // Other errors, redirect to login
+            window.location.href = 'login.html';
+            return;
+        }
+        
+        if (!session) {
+            console.log('Not authenticated, redirecting to login...');
+            window.location.href = 'login.html';
+            return;
+        }
+        
+        console.log('User authenticated:', session.user.email);
+    } catch (error) {
+        console.error('Authentication check failed:', error);
         window.location.href = 'login.html';
-        return;
     }
-    
-    console.log('User authenticated:', session.user.email);
 }
 
 // Load current user profile
@@ -129,57 +177,100 @@ async function loadPrivateKey() {
 async function loadUsers() {
     try {
         console.log('🔍 Loading users from database...');
+        console.log('Current user:', currentUser);
         console.log('Current user ID:', currentUser?.id);
-        console.log('Current user object:', currentUser);
+        
+        // Check if we have a valid session first
+        const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+        console.log('📋 Current session:', session);
+        
+        if (sessionError || !session) {
+            console.error('❌ No valid session!', sessionError);
+            window.location.href = 'login.html';
+            return;
+        }
         
         // First, get ALL users to see what's in database
+        console.log('📡 Fetching ALL users from database...');
         const { data: allDbUsers, error: allError } = await supabaseClient
             .from('profiles')
             .select('*')
             .order('created_at', { ascending: false });
         
+        if (allError) {
+            console.error('❌ Error fetching all users:', allError);
+            throw allError;
+        }
+        
         console.log('📊 ALL users in database:', allDbUsers);
-        console.log('Total users count:', allDbUsers?.length || 0);
+        console.log('📊 Total users count:', allDbUsers?.length || 0);
+        
+        if (allDbUsers) {
+            allDbUsers.forEach((user, index) => {
+                console.log(`User ${index + 1}:`, {
+                    id: user.id,
+                    name: user.name,
+                    username: user.username,
+                    email: user.email,
+                    isCurrentUser: user.id === currentUser?.id
+                });
+            });
+        }
         
         // Now get users excluding current user
+        console.log('📡 Fetching OTHER users (excluding current user)...');
         const { data: users, error } = await supabaseClient
             .from('profiles')
             .select('*')
             .neq('id', currentUser.id)
             .order('created_at', { ascending: false });
         
-        console.log('📊 Other users (excluding me):', users);
-        console.log('Database query result:', { users, error });
+        if (error) {
+            console.error('❌ Error fetching other users:', error);
+            throw error;
+        }
         
-        if (error) throw error;
+        console.log('📊 Other users (excluding me):', users);
+        console.log('📊 Other users count:', users?.length || 0);
         
         allUsers = users || [];
         
-        console.log('✅ Loaded users:', allUsers.length);
-        console.log('🔐 Users with E2EE:', allUsers.filter(u => u.public_key).length);
-        console.log('👥 User details:', allUsers.map(u => ({ 
-            id: u.id, 
-            name: u.name, 
-            username: u.username,
-            hasKeys: !!u.public_key 
-        })));
+        console.log('✅ Loaded users into allUsers array:', allUsers.length);
+        console.log('🔐 Users with encryption:', allUsers.filter(u => u.public_key).length);
+        console.log('👥 Detailed user info:');
+        allUsers.forEach((user, index) => {
+            console.log(`  ${index + 1}. ${user.name} (@${user.username}) - ID: ${user.id} - Keys: ${user.public_key ? '✅' : '❌'}`);
+        });
         
+        // Display users
+        console.log('🎨 Calling displayUsers with', allUsers.length, 'users');
         displayUsers(allUsers);
         
         if (allUsers.length === 0) {
-            console.warn('⚠️ No other users found in database');
-            console.log('💡 Tip: You need at least 2 accounts to see users in the list');
-            console.log('🔍 Check: Are you the only user? Total DB users:', allDbUsers?.length || 0);
+            console.warn('⚠️ No other users found!');
+            console.log('💡 Total users in DB:', allDbUsers?.length || 0);
+            console.log('💡 Current user ID:', currentUser?.id);
+            console.log('💡 You need at least 2 users total (1 other user)');
+        } else {
+            console.log('✅ SUCCESS! Found', allUsers.length, 'other user(s) to display');
         }
         
     } catch (error) {
-        console.error('❌ Error loading users:', error);
+        console.error('❌ FATAL ERROR loading users:', error);
+        console.error('Error details:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+        });
+        
         document.getElementById('users-list').innerHTML = `
             <div class="list-loading">
                 <i class="fas fa-exclamation-circle"></i>
                 <p>Error loading users</p>
-                <button onclick="location.href='debug-users.html'" style="margin-top: 10px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                    🔍 Debug Issue
+                <p style="font-size: 12px; color: #999; margin-top: 10px;">${error.message}</p>
+                <button onclick="location.reload()" style="margin-top: 10px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                    🔄 Retry
                 </button>
             </div>
         `;
@@ -562,3 +653,66 @@ async function confirmSignOut() {
         confirmBtn.disabled = false;
     }
 }
+
+// Debug function to check users
+async function debugUsers() {
+    console.log('🐛 DEBUG: Starting user debug...');
+    
+    try {
+        // Check session
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        console.log('🔐 Current session:', session);
+        console.log('👤 Current user from session:', session?.user);
+        console.log('👤 Current user from memory:', currentUser);
+        
+        // Check all users in database
+        const { data: allUsers, error } = await supabaseClient
+            .from('profiles')
+            .select('*');
+        
+        console.log('📊 Database query result:', { allUsers, error });
+        
+        if (error) {
+            console.error('❌ Database error:', error);
+            alert('Database error: ' + error.message);
+            return;
+        }
+        
+        console.log('📊 Total users in database:', allUsers?.length);
+        
+        if (allUsers && allUsers.length > 0) {
+            console.log('👥 All users:');
+            allUsers.forEach((user, i) => {
+                console.log(`  ${i + 1}. ${user.name} (@${user.username})`);
+                console.log(`     ID: ${user.id}`);
+                console.log(`     Email: ${user.email}`);
+                console.log(`     Is me: ${user.id === currentUser?.id ? 'YES' : 'NO'}`);
+                console.log(`     Has keys: ${user.public_key ? 'YES' : 'NO'}`);
+            });
+        }
+        
+        // Check allUsers variable
+        console.log('📦 allUsers variable:', allUsers);
+        console.log('📦 allUsers length:', allUsers?.length);
+        
+        // Show alert
+        const summary = `
+Debug Info:
+- Session: ${session ? 'Valid' : 'Invalid'}
+- Current User: ${currentUser?.name || 'Unknown'}
+- Total DB Users: ${allUsers?.length || 0}
+- Loaded Users: ${allUsers?.length || 0}
+
+Check console (F12) for detailed logs!
+        `.trim();
+        
+        alert(summary);
+        
+    } catch (error) {
+        console.error('🐛 Debug error:', error);
+        alert('Debug error: ' + error.message);
+    }
+}
+
+// Make debugUsers available globally
+window.debugUsers = debugUsers;

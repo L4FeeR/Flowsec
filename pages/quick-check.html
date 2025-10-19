@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick User Check</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1e1e1e;
+            color: #fff;
+            padding: 20px;
+        }
+        .box {
+            background: #2d2d2d;
+            border: 2px solid #4CAF50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 6px;
+            margin: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        pre {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Quick User Check</h1>
+    <p>Check how many users exist in your database</p>
+
+    <button onclick="checkUsers()">🔄 Check Users</button>
+    <button onclick="window.location.href='chat.html'">💬 Go to Chat</button>
+
+    <div id="results"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../js/config.js"></script>
+    
+    <script>
+        const { createClient } = supabase;
+        let supabaseClient;
+
+        async function checkUsers() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="box">⏳ Loading...</div>';
+
+            try {
+                supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+                // Get current user
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                
+                let html = '';
+
+                if (session) {
+                    html += `
+                        <div class="box">
+                            <h2>👤 Logged In As</h2>
+                            <p><strong>Email:</strong> ${session.user.email}</p>
+                            <p><strong>User ID:</strong> ${session.user.id}</p>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="box" style="border-color: #ff9800;">
+                            <h2>⚠️ Not Logged In</h2>
+                            <p>You need to log in first</p>
+                            <button onclick="window.location.href='login.html'">🔑 Login</button>
+                        </div>
+                    `;
+                    resultsDiv.innerHTML = html;
+                    return;
+                }
+
+                // Get ALL users
+                const { data: allUsers, error } = await supabaseClient
+                    .from('profiles')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                console.log('Database query result:', { allUsers, error });
+
+                if (error) {
+                    html += `
+                        <div class="box" style="border-color: #f44336;">
+                            <h2>❌ Database Error</h2>
+                            <p>${error.message}</p>
+                            <pre>${JSON.stringify(error, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    const totalUsers = allUsers?.length || 0;
+                    const otherUsers = allUsers?.filter(u => u.id !== session.user.id) || [];
+
+                    html += `
+                        <div class="box" style="border-color: ${totalUsers >= 2 ? '#4CAF50' : '#ff9800'};">
+                            <h2>📊 Database Status</h2>
+                            <p><strong>Total Users:</strong> ${totalUsers}</p>
+                            <p><strong>Other Users (excluding you):</strong> ${otherUsers.length}</p>
+                            <p><strong>Status:</strong> ${totalUsers >= 2 ? '✅ Should work!' : '⚠️ Need at least 2 users'}</p>
+                        </div>
+                    `;
+
+                    if (totalUsers === 0) {
+                        html += `
+                            <div class="box" style="border-color: #f44336;">
+                                <h2>❌ No Profiles Found!</h2>
+                                <p>The profiles table is empty.</p>
+                                <p>This means you need to complete profile setup.</p>
+                                <button onclick="window.location.href='complete-profile.html'">👤 Complete Profile</button>
+                            </div>
+                        `;
+                    } else {
+                        html += `<div class="box"><h2>👥 All Users</h2>`;
+                        
+                        allUsers.forEach((user, index) => {
+                            const isYou = user.id === session.user.id;
+                            html += `
+                                <div style="background: ${isYou ? '#1b3a1b' : '#1a1a1a'}; padding: 15px; margin: 10px 0; border-radius: 6px; border: 2px solid ${isYou ? '#4CAF50' : '#444'};">
+                                    <h3>${user.name || user.username} ${isYou ? '(YOU)' : ''} ${user.public_key ? '🔐' : ''}</h3>
+                                    <p><strong>Username:</strong> @${user.username}</p>
+                                    <p><strong>Email:</strong> ${user.email || 'N/A'}</p>
+                                    <p><strong>Gender:</strong> ${user.gender || 'N/A'}</p>
+                                    <p><strong>ID:</strong> ${user.id}</p>
+                                    <p><strong>Created:</strong> ${new Date(user.created_at).toLocaleString()}</p>
+                                    <p><strong>Has Encryption:</strong> ${user.public_key ? '✅ Yes' : '❌ No'}</p>
+                                </div>
+                            `;
+                        });
+                        
+                        html += `</div>`;
+                    }
+                }
+
+                resultsDiv.innerHTML = html;
+
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="box" style="border-color: #f44336;">
+                        <h2>❌ Error</h2>
+                        <p>${error.message}</p>
+                        <pre>${JSON.stringify(error, null, 2)}</pre>
+                    </div>
+                `;
+                console.error('Check users error:', error);
+            }
+        }
+
+        // Auto-check on load
+        window.addEventListener('DOMContentLoaded', checkUsers);
+    </script>
+</body>
+</html>
