@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #667eea;
+            color: white;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Database Test</h1>
+        <p>Check what's actually in your database</p>
+        
+        <div>
+            <button onclick="checkProfiles()">📊 Check Profiles Table</button>
+            <button onclick="checkAuth()">🔐 Check Auth Users</button>
+            <button onclick="checkCurrentUser()">👤 Check Current User</button>
+            <button onclick="clearResults()">🗑️ Clear</button>
+        </div>
+        
+        <div id="results" class="results"></div>
+    </div>
+
+    <script type="module">
+        import { supabaseClient } from '../js/supabase-client.js';
+        window.supabaseClient = supabaseClient;
+        
+        window.clearResults = function() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        window.checkCurrentUser = async function() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="info">⏳ Checking current user...</div>';
+            
+            try {
+                const { data: { user }, error } = await supabaseClient.auth.getUser();
+                
+                if (error) {
+                    results.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+                    return;
+                }
+                
+                if (!user) {
+                    results.innerHTML = '<div class="error">❌ Not logged in!</div>';
+                    return;
+                }
+                
+                results.innerHTML = `
+<div class="success">✅ Current User:</div>
+<div>ID: ${user.id}</div>
+<div>Email: ${user.email}</div>
+<div>Created: ${new Date(user.created_at).toLocaleString()}</div>
+                `;
+                
+            } catch (error) {
+                results.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+        
+        window.checkAuth = async function() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="info">⏳ Checking auth.users table...</div>';
+            
+            try {
+                // Note: You can't directly query auth.users, but we can check the session
+                const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+                
+                if (sessionError) {
+                    results.innerHTML = `<div class="error">❌ Session Error: ${sessionError.message}</div>`;
+                    return;
+                }
+                
+                if (!session) {
+                    results.innerHTML = '<div class="error">❌ No active session! Please login first.</div>';
+                    return;
+                }
+                
+                results.innerHTML = `
+<div class="success">✅ Active Session Found</div>
+<div>User ID: ${session.user.id}</div>
+<div>Email: ${session.user.email}</div>
+<div>Token expires: ${new Date(session.expires_at * 1000).toLocaleString()}</div>
+                `;
+                
+            } catch (error) {
+                results.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+        
+        window.checkProfiles = async function() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="info">⏳ Fetching profiles...</div>';
+            
+            try {
+                // Get all profiles
+                const { data: profiles, error } = await supabaseClient
+                    .from('profiles')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                
+                if (error) {
+                    results.innerHTML = `
+<div class="error">❌ Database Error:</div>
+<div>Message: ${error.message}</div>
+<div>Code: ${error.code}</div>
+<div>Details: ${error.details}</div>
+<div>Hint: ${error.hint}</div>
+                    `;
+                    return;
+                }
+                
+                if (!profiles || profiles.length === 0) {
+                    results.innerHTML = `
+<div class="error">⚠️ NO PROFILES FOUND!</div>
+<div>The profiles table is empty.</div>
+<div>This means users signed up but didn't complete their profile setup.</div>
+<div style="margin-top: 10px;">
+    <strong>Solution:</strong> After signup, you MUST visit the profile setup page.
+</div>
+                    `;
+                    return;
+                }
+                
+                // Display results
+                let html = `
+<div class="success">✅ Found ${profiles.length} profile(s)</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Has Keys</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+                `;
+                
+                profiles.forEach((profile, index) => {
+                    const hasKeys = profile.public_key ? '✅' : '❌';
+                    const created = new Date(profile.created_at).toLocaleString();
+                    html += `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${profile.name || 'N/A'}</td>
+            <td>@${profile.username || 'N/A'}</td>
+            <td>${profile.email || 'N/A'}</td>
+            <td>${hasKeys}</td>
+            <td>${created}</td>
+        </tr>
+                    `;
+                });
+                
+                html += `
+    </tbody>
+</table>
+
+<div style="margin-top: 20px; padding: 10px; background: #e3f2fd; border-left: 4px solid #2196f3;">
+    <strong>Raw Data:</strong>
+    <pre>${JSON.stringify(profiles, null, 2)}</pre>
+</div>
+                `;
+                
+                results.innerHTML = html;
+                
+            } catch (error) {
+                results.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
