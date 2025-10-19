@@ -49,13 +49,23 @@
             </div>
             
             <!-- Debug Info Bar -->
-            <div style="padding: 10px; background: #f5f5f5; border-radius: 8px; margin: 10px; font-size: 12px; text-align: center;">
-                <button onclick="debugUsers()" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">
-                    🔍 Debug Users
-                </button>
-                <button onclick="loadUsers()" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; margin-left: 5px;">
-                    🔄 Reload Users
-                </button>
+                        <!-- Debug info panel -->
+            <div id="debug-panel" style="padding: 12px; background: #fff3cd; border-bottom: 2px solid #ffc107; font-size: 13px;">
+                <div style="font-weight: bold; margin-bottom: 8px;">🔍 Debug Info:</div>
+                <div id="debug-info" style="font-family: monospace; font-size: 11px; color: #333;">
+                    Loading...
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button onclick="debugUsers()" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        🔍 Full Debug
+                    </button>
+                    <button onclick="loadUsers()" style="padding: 6px 12px; background: #764ba2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        🔄 Reload Users
+                    </button>
+                    <button onclick="document.getElementById('debug-panel').style.display='none'" style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        ✕ Hide
+                    </button>
+                </div>
             </div>
 
             <!-- Users List -->

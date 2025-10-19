@@ -173,6 +173,14 @@ async function loadPrivateKey() {
     }
 }
 
+// Update debug panel in UI
+function updateDebugPanel(info) {
+    const debugInfo = document.getElementById('debug-info');
+    if (debugInfo) {
+        debugInfo.innerHTML = info;
+    }
+}
+
 // Load all users
 async function loadUsers() {
     try {
@@ -180,12 +188,15 @@ async function loadUsers() {
         console.log('Current user:', currentUser);
         console.log('Current user ID:', currentUser?.id);
         
+        updateDebugPanel('⏳ Loading users...');
+        
         // Check if we have a valid session first
         const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
         console.log('📋 Current session:', session);
         
         if (sessionError || !session) {
             console.error('❌ No valid session!', sessionError);
+            updateDebugPanel('❌ No valid session - redirecting...');
             window.location.href = 'login.html';
             return;
         }
@@ -199,6 +210,7 @@ async function loadUsers() {
         
         if (allError) {
             console.error('❌ Error fetching all users:', allError);
+            updateDebugPanel(`❌ Database error: ${allError.message}`);
             throw allError;
         }
         
@@ -227,6 +239,7 @@ async function loadUsers() {
         
         if (error) {
             console.error('❌ Error fetching other users:', error);
+            updateDebugPanel(`❌ Error: ${error.message}`);
             throw error;
         }
         
@@ -241,6 +254,19 @@ async function loadUsers() {
         allUsers.forEach((user, index) => {
             console.log(`  ${index + 1}. ${user.name} (@${user.username}) - ID: ${user.id} - Keys: ${user.public_key ? '✅' : '❌'}`);
         });
+        
+        // Update debug panel with results
+        const totalUsers = allDbUsers?.length || 0;
+        const otherUsers = users?.length || 0;
+        const debugHtml = `
+            <div><strong>Total users in DB:</strong> ${totalUsers}</div>
+            <div><strong>Other users:</strong> ${otherUsers}</div>
+            <div><strong>Current user ID:</strong> ${currentUser?.id?.substring(0, 8)}...</div>
+            ${totalUsers === 1 ? '<div style="color: red; margin-top: 8px;">⚠️ Only 1 user exists! Create another account.</div>' : ''}
+            ${totalUsers > 1 && otherUsers === 0 ? '<div style="color: red; margin-top: 8px;">⚠️ Filtering issue - users exist but not showing!</div>' : ''}
+            ${otherUsers > 0 ? '<div style="color: green; margin-top: 8px;">✅ Found users, displaying...</div>' : ''}
+        `;
+        updateDebugPanel(debugHtml);
         
         // Display users
         console.log('🎨 Calling displayUsers with', allUsers.length, 'users');
