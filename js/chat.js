@@ -150,11 +150,29 @@ function updateCurrentUserUI() {
 // Load user's private key from localStorage
 async function loadPrivateKey() {
     try {
-        if (!currentUser) return;
+        if (!currentUser) {
+            console.warn('⚠️ No current user, cannot load private key');
+            return;
+        }
         
-        // Check if private key exists
+        console.log('🔍 Looking for private key for user:', currentUser.id);
+        
+        // Check if private key exists for THIS user
         if (!EncryptionService.hasPrivateKey(currentUser.id)) {
-            console.warn('⚠️ No private key found. User may need to regenerate keys.');
+            console.warn('⚠️ No private key found for this user. Checking if user has public key...');
+            
+            // If user has public key in database but no private key locally,
+            // they probably logged in on different device or cleared data
+            if (currentUser.public_key) {
+                console.warn('🔐 User has public key in DB but no private key locally');
+                console.warn('💡 This user either:');
+                console.warn('   - Logged in on different device');
+                console.warn('   - Cleared browser data');
+                console.warn('   - Is using incognito mode');
+                showEncryptionWarning();
+            } else {
+                console.warn('⚠️ User has no encryption keys at all. Keys not generated during signup.');
+            }
             return;
         }
         
@@ -162,12 +180,30 @@ async function loadPrivateKey() {
         const { data: { user } } = await supabaseClient.auth.getUser();
         const password = user.email;
         
+        console.log('🔓 Attempting to decrypt private key...');
+        
         // Retrieve and decrypt private key
         privateKey = await EncryptionService.retrievePrivateKey(currentUser.id, password);
-        console.log('🔐 Private key loaded successfully');
+        
+        if (privateKey) {
+            console.log('✅ Private key loaded and decrypted successfully');
+        } else {
+            console.error('❌ Private key retrieved but is null/undefined');
+            showEncryptionWarning();
+        }
         
     } catch (error) {
         console.error('❌ Error loading private key:', error);
+        console.error('Error details:', error.message);
+        
+        // If decryption fails, the stored key might be corrupted or for wrong user
+        // Clear the invalid key
+        if (currentUser && currentUser.id) {
+            const keyName = `encrypted_privateKey_${currentUser.id}`;
+            console.warn('🗑️ Removing potentially corrupted key:', keyName);
+            localStorage.removeItem(keyName);
+        }
+        
         // Show warning to user
         showEncryptionWarning();
     }
@@ -649,13 +685,18 @@ function showEncryptionWarning() {
                         <p style="color: #ff9800; font-weight: 600; margin-bottom: 20px;">
                             ⚠️ You won't be able to read encrypted messages
                         </p>
-                        <div style="display: flex; gap: 10px; justify-content: center;">
-                            <button onclick="location.reload()" style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                                🔄 Reload Page
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <button onclick="regenerateKeys()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                🔑 Generate New Keys
                             </button>
-                            <button onclick="hideEncryptionWarning()" style="padding: 12px 24px; background: #f0f0f0; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                                Continue Anyway
-                            </button>
+                            <div style="display: flex; gap: 10px;">
+                                <button onclick="location.reload()" style="flex: 1; padding: 10px 16px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                                    🔄 Reload
+                                </button>
+                                <button onclick="hideEncryptionWarning()" style="flex: 1; padding: 10px 16px; background: #f0f0f0; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                                    Continue
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -677,6 +718,95 @@ function hideEncryptionWarning() {
     if (modal) {
         modal.classList.remove('active');
         document.body.style.overflow = '';
+    }
+}
+
+async function regenerateKeys() {
+    if (!confirm('⚠️ Warning: Generating new keys will prevent you from reading old encrypted messages.\n\nOld messages will become unreadable, but you can send and receive new messages.\n\nContinue?')) {
+        return;
+    }
+    
+    try {
+        console.log('🔑 Regenerating encryption keys...');
+        hideEncryptionWarning();
+        
+        // Show loading indicator
+        const messagesArea = document.getElementById('messages-area');
+        if (messagesArea) {
+            messagesArea.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <i class="fas fa-spinner fa-spin" style="font-size: 48px; color: #667eea; margin-bottom: 20px;"></i>
+                    <h3>Generating New Encryption Keys...</h3>
+                    <p style="color: #666;">This will take a moment...</p>
+                </div>
+            `;
+        }
+        
+        // Get user email as password
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        const password = user.email;
+        
+        // Generate new key pair
+        console.log('🔐 Generating RSA key pair...');
+        const keyPair = await EncryptionService.generateKeyPair();
+        
+        // Store private key encrypted in localStorage
+        console.log('💾 Storing encrypted private key...');
+        await EncryptionService.storePrivateKey(currentUser.id, keyPair.privateKey, password);
+        
+        // Export public key to store in database
+        console.log('📤 Exporting public key...');
+        const publicKeyString = await EncryptionService.exportPublicKey(keyPair.publicKey);
+        
+        // Generate key fingerprint for verification
+        const encoder = new TextEncoder();
+        const publicKeyData = encoder.encode(publicKeyString);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', publicKeyData);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const keyFingerprint = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+        
+        // Update database with new public key
+        console.log('☁️ Updating public key in database...');
+        const { error: updateError } = await supabaseClient
+            .from('profiles')
+            .update({
+                public_key: publicKeyString,
+                key_fingerprint: keyFingerprint,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', currentUser.id);
+        
+        if (updateError) {
+            throw updateError;
+        }
+        
+        // Update currentUser object
+        currentUser.public_key = publicKeyString;
+        currentUser.key_fingerprint = keyFingerprint;
+        
+        // Load the new private key
+        privateKey = keyPair.privateKey;
+        
+        console.log('✅ Encryption keys regenerated successfully!');
+        console.log('🔑 Key fingerprint:', keyFingerprint);
+        
+        // Show success message
+        if (messagesArea) {
+            messagesArea.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <i class="fas fa-check-circle" style="font-size: 48px; color: #4CAF50; margin-bottom: 20px;"></i>
+                    <h3 style="color: #4CAF50;">Keys Generated Successfully!</h3>
+                    <p style="color: #666; margin: 10px 0 20px 0;">You can now send and receive encrypted messages.</p>
+                    <button onclick="location.reload()" style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                        🔄 Reload Page
+                    </button>
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        console.error('❌ Error regenerating keys:', error);
+        alert('Error generating keys: ' + error.message);
     }
 }
 
@@ -717,6 +847,22 @@ async function confirmSignOut() {
         privateKey = null;
         currentUser = null;
         selectedUser = null;
+        
+        // Clear encryption keys from localStorage
+        // Remove all stored private keys (they're stored with userId prefix)
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('privateKey_') || key.startsWith('encrypted_privateKey_'))) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(key => {
+            console.log('🗑️ Removing key:', key);
+            localStorage.removeItem(key);
+        });
+        
+        console.log('✅ Cleared encryption keys from device');
         
         // Hide modal
         hideSignOutModal();
