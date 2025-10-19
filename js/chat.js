@@ -229,7 +229,7 @@ async function loadUsers() {
             });
         }
         
-        // Now get users excluding current user
+        // Now get users excluding current user (keep for search)
         console.log('📡 Fetching OTHER users (excluding current user)...');
         const { data: users, error } = await supabaseClient
             .from('profiles')
@@ -255,22 +255,46 @@ async function loadUsers() {
             console.log(`  ${index + 1}. ${user.name} (@${user.username}) - ID: ${user.id} - Keys: ${user.public_key ? '✅' : '❌'}`);
         });
         
+        // Get users with existing conversations
+        console.log('💬 Fetching users with message history...');
+        const { data: messages, error: msgError } = await supabaseClient
+            .from('messages')
+            .select('sender_id, receiver_id')
+            .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`);
+        
+        let usersWithConversations = [];
+        if (!msgError && messages && messages.length > 0) {
+            // Get unique user IDs from conversations
+            const conversationUserIds = new Set();
+            messages.forEach(msg => {
+                if (msg.sender_id !== currentUser.id) conversationUserIds.add(msg.sender_id);
+                if (msg.receiver_id !== currentUser.id) conversationUserIds.add(msg.receiver_id);
+            });
+            
+            // Filter users to only those with conversations
+            usersWithConversations = allUsers.filter(user => conversationUserIds.has(user.id));
+            console.log('✅ Found', usersWithConversations.length, 'users with conversations');
+        } else {
+            console.log('📭 No existing conversations found');
+        }
+        
         // Update debug panel with results
         const totalUsers = allDbUsers?.length || 0;
         const otherUsers = users?.length || 0;
+        const conversationUsers = usersWithConversations.length;
         const debugHtml = `
-            <div><strong>Total users in DB:</strong> ${totalUsers}</div>
-            <div><strong>Other users:</strong> ${otherUsers}</div>
-            <div><strong>Current user ID:</strong> ${currentUser?.id?.substring(0, 8)}...</div>
-            ${totalUsers === 1 ? '<div style="color: red; margin-top: 8px;">⚠️ Only 1 user exists! Create another account.</div>' : ''}
-            ${totalUsers > 1 && otherUsers === 0 ? '<div style="color: red; margin-top: 8px;">⚠️ Filtering issue - users exist but not showing!</div>' : ''}
-            ${otherUsers > 0 ? '<div style="color: green; margin-top: 8px;">✅ Found users, displaying...</div>' : ''}
+            <div><strong>Total users:</strong> ${totalUsers} | <strong>Other users:</strong> ${otherUsers}</div>
+            <div><strong>Conversations:</strong> ${conversationUsers} users</div>
+            <div style="font-size: 10px; color: #666; margin-top: 5px;">
+                💡 Use search to find users for new conversations
+            </div>
         `;
         updateDebugPanel(debugHtml);
         
-        // Display users
-        console.log('🎨 Calling displayUsers with', allUsers.length, 'users');
-        displayUsers(allUsers);
+        // Display only users with conversations by default
+        // Search will show all users
+        console.log('🎨 Displaying users with conversations:', conversationUsers);
+        displayUsers(usersWithConversations);
         
         if (allUsers.length === 0) {
             console.warn('⚠️ No other users found!');
@@ -319,8 +343,9 @@ function displayUsers(users) {
         console.log('📭 No users to display - showing empty state');
         usersList.innerHTML = `
             <div class="list-loading">
-                <i class="fas fa-users"></i>
-                <p>No other users yet</p>
+                <i class="fas fa-search" style="font-size: 48px; color: #ddd; margin-bottom: 15px;"></i>
+                <p style="font-size: 16px; font-weight: 600; color: #666; margin: 0 0 8px 0;">No Conversations Yet</p>
+                <p style="font-size: 13px; color: #999; margin: 0;">Use the search above to find users and start chatting!</p>
             </div>
         `;
         return;
@@ -602,19 +627,56 @@ function updateThemeIcon() {
 
 // Show encryption warning
 function showEncryptionWarning() {
-    const messagesArea = document.getElementById('messages-area');
-    if (messagesArea && messagesArea.innerHTML.includes('No messages yet')) {
-        messagesArea.innerHTML = `
-            <div style="text-align: center; padding: 20px; color: #ff9800;">
-                <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 10px;"></i>
-                <h3>Encryption Keys Not Available</h3>
-                <p>Your encryption keys could not be loaded.<br>
-                Messages may not be secure.</p>
-                <button onclick="location.reload()" style="margin-top: 15px; padding: 10px 20px; background: #ff9800; color: white; border: none; border-radius: 8px; cursor: pointer;">
-                    Reload Page
-                </button>
+    // Create modal HTML if it doesn't exist
+    if (!document.getElementById('encryption-warning-modal')) {
+        const modalHTML = `
+            <div id="encryption-warning-modal" class="modal">
+                <div class="modal-overlay" onclick="hideEncryptionWarning()"></div>
+                <div class="modal-content" style="max-width: 400px;">
+                    <div style="text-align: center; padding: 20px;">
+                        <div style="background: linear-gradient(135deg, #ff9800, #ff5722); width: 80px; height: 80px; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 40px; color: white;"></i>
+                        </div>
+                        <h3 style="margin: 0 0 10px 0; color: #333;">Encryption Keys Not Loaded</h3>
+                        <p style="color: #666; margin: 0 0 20px 0; line-height: 1.6;">
+                            Your private encryption key could not be loaded from this device. This might happen if:
+                        </p>
+                        <ul style="text-align: left; color: #666; line-height: 1.8; margin: 0 0 20px 40px;">
+                            <li>You're on a different device</li>
+                            <li>Browser data was cleared</li>
+                            <li>This is a new browser/incognito mode</li>
+                        </ul>
+                        <p style="color: #ff9800; font-weight: 600; margin-bottom: 20px;">
+                            ⚠️ You won't be able to read encrypted messages
+                        </p>
+                        <div style="display: flex; gap: 10px; justify-content: center;">
+                            <button onclick="location.reload()" style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                🔄 Reload Page
+                            </button>
+                            <button onclick="hideEncryptionWarning()" style="padding: 12px 24px; background: #f0f0f0; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                Continue Anyway
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+    
+    // Show modal
+    const modal = document.getElementById('encryption-warning-modal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function hideEncryptionWarning() {
+    const modal = document.getElementById('encryption-warning-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
     }
 }
 
