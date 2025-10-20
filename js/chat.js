@@ -462,16 +462,120 @@ function updateChatHeader() {
     chatAvatar.src = avatarUrl;
 }
 
-// Load messages (placeholder - will implement with database)
-function loadMessages() {
+// Load messages from database
+async function loadMessages() {
     const messagesArea = document.getElementById('messages-area');
     
-    // Clear empty state
-    messagesArea.innerHTML = `
-        <div style="text-align: center; padding: 20px; color: #999;">
-            <p>No messages yet. Start the conversation!</p>
-        </div>
-    `;
+    if (!selectedUser) {
+        messagesArea.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: #999;">
+                <p>Select a user to start chatting</p>
+            </div>
+        `;
+        return;
+    }
+    
+    try {
+        console.log('📥 Loading messages with', selectedUser.username);
+        
+        // Show loading state
+        messagesArea.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: #999;">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Loading messages...</p>
+            </div>
+        `;
+        
+        // Fetch messages between current user and selected user
+        const { data: messages, error } = await supabaseClient
+            .from('messages')
+            .select('*')
+            .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedUser.id}),and(sender_id.eq.${selectedUser.id},receiver_id.eq.${currentUser.id})`)
+            .order('created_at', { ascending: true });
+        
+        if (error) {
+            console.error('❌ Error loading messages:', error);
+            throw error;
+        }
+        
+        console.log(`📊 Found ${messages?.length || 0} messages`);
+        
+        if (!messages || messages.length === 0) {
+            messagesArea.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #999;">
+                    <p>No messages yet. Start the conversation!</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Clear messages area
+        messagesArea.innerHTML = '';
+        
+        // Decrypt and display each message
+        for (const msg of messages) {
+            try {
+                let decryptedText;
+                
+                // Decrypt the message
+                if (msg.encrypted_content && msg.encrypted_aes_key && msg.iv) {
+                    console.log('🔓 Decrypting message...');
+                    
+                    if (!privateKey) {
+                        console.warn('⚠️ No private key available to decrypt message');
+                        decryptedText = '[Encrypted message - key not available]';
+                    } else {
+                        // Decrypt using our private key
+                        const encryptedPackage = {
+                            encryptedData: msg.encrypted_content,
+                            encryptedAESKey: msg.encrypted_aes_key,
+                            iv: msg.iv
+                        };
+                        
+                        decryptedText = await EncryptionService.decryptMessage(encryptedPackage, privateKey);
+                        console.log('✅ Message decrypted successfully');
+                    }
+                } else {
+                    // Fallback for unencrypted messages (shouldn't happen)
+                    decryptedText = msg.content || '[No content]';
+                }
+                
+                // Display the message
+                displayMessage({
+                    text: decryptedText,
+                    sender_id: msg.sender_id,
+                    created_at: msg.created_at,
+                    encrypted: true
+                });
+                
+            } catch (decryptError) {
+                console.error('❌ Error decrypting message:', decryptError);
+                
+                // Display error message
+                displayMessage({
+                    text: '[Failed to decrypt message]',
+                    sender_id: msg.sender_id,
+                    created_at: msg.created_at,
+                    encrypted: true
+                });
+            }
+        }
+        
+        console.log('✅ All messages loaded and decrypted');
+        
+    } catch (error) {
+        console.error('❌ Error in loadMessages:', error);
+        messagesArea.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: #f44336;">
+                <i class="fas fa-exclamation-circle"></i>
+                <p>Error loading messages</p>
+                <p style="font-size: 12px;">${error.message}</p>
+                <button onclick="loadMessages()" style="margin-top: 10px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                    🔄 Retry
+                </button>
+            </div>
+        `;
+    }
 }
 
 // Send message
@@ -503,29 +607,42 @@ async function sendMessage() {
         
         console.log('✅ Message encrypted successfully');
         
+        // Save encrypted message to database
+        console.log('💾 Saving encrypted message to database...');
+        const { data: messageData, error: saveError } = await supabaseClient
+            .from('messages')
+            .insert({
+                sender_id: currentUser.id,
+                receiver_id: selectedUser.id,
+                encrypted_content: encryptedPackage.encryptedData,
+                encrypted_aes_key: encryptedPackage.encryptedAESKey,
+                iv: encryptedPackage.iv,
+                created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+        
+        if (saveError) {
+            console.error('❌ Error saving message to database:', saveError);
+            throw saveError;
+        }
+        
+        console.log('✅ Message saved to database:', messageData);
+        
         // Display message immediately (unencrypted for sender)
         displayMessage({
             text: message,
             sender_id: currentUser.id,
-            created_at: new Date().toISOString(),
+            created_at: messageData.created_at,
             encrypted: true
         });
         
         // Clear input
         input.value = '';
         
-        // TODO: Save encrypted message to database
-        console.log('💾 Encrypted message ready for storage:', {
-            sender_id: currentUser.id,
-            receiver_id: selectedUser.id,
-            encrypted_aes_key: encryptedPackage.encryptedAESKey,
-            iv: encryptedPackage.iv,
-            encrypted_data: encryptedPackage.encryptedData
-        });
-        
     } catch (error) {
         console.error('❌ Error sending encrypted message:', error);
-        alert('Failed to encrypt message. Please try again.');
+        alert('Failed to send message: ' + error.message);
     }
 }
 
