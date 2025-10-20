@@ -587,13 +587,24 @@ async function sendMessage() {
     
     // Check if encryption is available
     if (!selectedUser.public_key) {
-        alert('⚠️ This user does not have encryption enabled. Cannot send encrypted message.');
+        showError('⚠️ This user does not have encryption enabled. Cannot send encrypted message.');
         return;
     }
     
     if (!privateKey) {
-        alert('⚠️ Your encryption keys are not loaded. Please refresh the page.');
-        return;
+        console.warn('⚠️ Private key not loaded, attempting to reload...');
+        
+        // Try to reload private key
+        await loadPrivateKey();
+        
+        // Check again
+        if (!privateKey) {
+            console.error('❌ Still no private key after reload attempt');
+            showEncryptionWarning();
+            return;
+        }
+        
+        console.log('✅ Private key reloaded successfully');
     }
     
     try {
@@ -681,6 +692,26 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Show error message in chat area
+function showError(message) {
+    const messagesArea = document.getElementById('messages-area');
+    if (messagesArea) {
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'text-align: center; padding: 15px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; margin: 10px; color: #856404;';
+        errorDiv.innerHTML = `
+            <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>
+            ${message}
+        `;
+        messagesArea.appendChild(errorDiv);
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            errorDiv.remove();
+        }, 5000);
+    }
 }
 
 // Setup event listeners
@@ -907,23 +938,39 @@ async function regenerateKeys() {
         console.log('✅ Encryption keys regenerated successfully!');
         console.log('🔑 Key fingerprint:', keyFingerprint);
         
-        // Show success message
+        // Show success message and auto-reload
         if (messagesArea) {
             messagesArea.innerHTML = `
                 <div style="text-align: center; padding: 40px;">
                     <i class="fas fa-check-circle" style="font-size: 48px; color: #4CAF50; margin-bottom: 20px;"></i>
                     <h3 style="color: #4CAF50;">Keys Generated Successfully!</h3>
-                    <p style="color: #666; margin: 10px 0 20px 0;">You can now send and receive encrypted messages.</p>
+                    <p style="color: #666; margin: 10px 0 20px 0;">Reloading page...</p>
+                </div>
+            `;
+        }
+        
+        // Auto-reload after 1.5 seconds
+        setTimeout(() => {
+            location.reload();
+        }, 1500);
+        
+    } catch (error) {
+        console.error('❌ Error regenerating keys:', error);
+        
+        // Show error in chat area instead of alert
+        const messagesArea = document.getElementById('messages-area');
+        if (messagesArea) {
+            messagesArea.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-circle" style="font-size: 48px; color: #f44336; margin-bottom: 20px;"></i>
+                    <h3 style="color: #f44336;">Error Generating Keys</h3>
+                    <p style="color: #666; margin: 10px 0 20px 0;">${error.message}</p>
                     <button onclick="location.reload()" style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
                         🔄 Reload Page
                     </button>
                 </div>
             `;
         }
-        
-    } catch (error) {
-        console.error('❌ Error regenerating keys:', error);
-        alert('Error generating keys: ' + error.message);
     }
 }
 
