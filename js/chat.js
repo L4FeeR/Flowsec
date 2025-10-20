@@ -609,32 +609,67 @@ async function sendMessage() {
     
     try {
         console.log('📤 Encrypting message...');
+        console.log('📋 Sender ID:', currentUser.id);
+        console.log('📋 Receiver ID:', selectedUser.id);
+        console.log('📋 Receiver public key exists:', !!selectedUser.public_key);
         
         // Import recipient's public key
         const recipientPublicKey = await EncryptionService.importPublicKey(selectedUser.public_key);
+        console.log('✅ Recipient public key imported');
         
         // Encrypt message
         const encryptedPackage = await EncryptionService.encryptMessage(message, recipientPublicKey);
         
         console.log('✅ Message encrypted successfully');
+        console.log('📦 Encrypted package:', {
+            encryptedData: encryptedPackage.encryptedData?.substring(0, 50) + '...',
+            encryptedAESKey: encryptedPackage.encryptedAESKey?.substring(0, 50) + '...',
+            iv: encryptedPackage.iv?.substring(0, 20) + '...'
+        });
         
         // Save encrypted message to database
         console.log('💾 Saving encrypted message to database...');
+        console.log('📡 Attempting insert into messages table...');
+        
+        const messagePayload = {
+            sender_id: currentUser.id,
+            receiver_id: selectedUser.id,
+            encrypted_content: encryptedPackage.encryptedData,
+            encrypted_aes_key: encryptedPackage.encryptedAESKey,
+            iv: encryptedPackage.iv,
+            created_at: new Date().toISOString()
+        };
+        
+        console.log('📦 Message payload ready:', {
+            sender_id: messagePayload.sender_id,
+            receiver_id: messagePayload.receiver_id,
+            has_encrypted_content: !!messagePayload.encrypted_content,
+            has_encrypted_key: !!messagePayload.encrypted_aes_key,
+            has_iv: !!messagePayload.iv
+        });
+        
         const { data: messageData, error: saveError } = await supabaseClient
             .from('messages')
-            .insert({
-                sender_id: currentUser.id,
-                receiver_id: selectedUser.id,
-                encrypted_content: encryptedPackage.encryptedData,
-                encrypted_aes_key: encryptedPackage.encryptedAESKey,
-                iv: encryptedPackage.iv,
-                created_at: new Date().toISOString()
-            })
+            .insert(messagePayload)
             .select()
             .single();
         
         if (saveError) {
-            console.error('❌ Error saving message to database:', saveError);
+            console.error('❌ Database save error:', saveError);
+            console.error('Error code:', saveError.code);
+            console.error('Error message:', saveError.message);
+            console.error('Error details:', saveError.details);
+            console.error('Error hint:', saveError.hint);
+            
+            // Show user-friendly error
+            if (saveError.code === '42P01') {
+                showError('❌ Messages table does not exist. Please contact administrator.');
+            } else if (saveError.code === '42501') {
+                showError('❌ Permission denied. Check database policies.');
+            } else {
+                showError(`❌ Failed to save message: ${saveError.message}`);
+            }
+            
             throw saveError;
         }
         
