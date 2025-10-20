@@ -24,6 +24,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load user's private key
     await loadPrivateKey();
     
+    // Check if private key loaded successfully
+    if (!privateKey && currentUser && currentUser.public_key) {
+        console.error('❌ Private key not available after loading');
+        console.log('🔑 Showing key regeneration prompt...');
+        // Delay to ensure DOM is ready
+        setTimeout(() => {
+            showEncryptionWarning();
+        }, 500);
+    }
+    
     // Load all users
     await loadUsers();
     
@@ -31,6 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     
     console.log('Chat dashboard initialized');
+    console.log('Private key status:', privateKey ? '✅ Loaded' : '❌ Not loaded');
 });
 
 // Setup automatic token refresh
@@ -318,9 +329,13 @@ async function loadUsers() {
         const totalUsers = allDbUsers?.length || 0;
         const otherUsers = users?.length || 0;
         const conversationUsers = usersWithConversations.length;
+        const keyStatus = privateKey ? '✅ Keys loaded' : '❌ Keys missing';
+        const keyAction = !privateKey && currentUser?.public_key ? 
+            '<button onclick="regenerateKeys()" style="margin-left: 8px; padding: 4px 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">🔑 Generate Keys</button>' : '';
+        
         const debugHtml = `
             <div><strong>Total users:</strong> ${totalUsers} | <strong>Other users:</strong> ${otherUsers}</div>
-            <div><strong>Conversations:</strong> ${conversationUsers} users</div>
+            <div><strong>Conversations:</strong> ${conversationUsers} | <strong>Encryption:</strong> ${keyStatus} ${keyAction}</div>
             <div style="font-size: 10px; color: #666; margin-top: 5px;">
                 💡 Use search to find users for new conversations
             </div>
