@@ -831,32 +831,70 @@ function setupEventListeners() {
         }
     });
     
-    // Close modal on Escape key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            const modal = document.getElementById('signout-modal');
-            if (modal && modal.classList.contains('active')) {
-                hideSignOutModal();
-            }
+    // Settings button
+    document.getElementById('settings-btn').addEventListener('click', showSettingsModal);
+    
+    // Close settings modal
+    document.getElementById('close-settings').addEventListener('click', hideSettingsModal);
+    
+    // Close settings modal on overlay click
+    document.getElementById('settings-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'settings-modal') {
+            hideSettingsModal();
         }
     });
     
-    // Settings button
-    document.getElementById('settings-btn').addEventListener('click', () => {
-        alert('Settings coming soon!');
+    // Theme toggle button in header
+    document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+    
+    // Theme select in settings
+    document.getElementById('theme-select').addEventListener('change', (e) => {
+        changeTheme(e.target.value);
     });
     
-    // Theme toggle button
-    document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+    // Regenerate keys from settings
+    const regenerateKeysSettings = document.getElementById('regenerate-keys-settings');
+    if (regenerateKeysSettings) {
+        regenerateKeysSettings.addEventListener('click', regenerateKeys);
+    }
+    
+    // File upload button
+    document.getElementById('attach-file-btn').addEventListener('click', () => {
+        document.getElementById('file-input').click();
+    });
+    
+    // File input change
+    document.getElementById('file-input').addEventListener('change', handleFileSelect);
+    
+    // Close modals on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const signoutModal = document.getElementById('signout-modal');
+            const settingsModal = document.getElementById('settings-modal');
+            
+            if (signoutModal && signoutModal.classList.contains('active')) {
+                hideSignOutModal();
+            }
+            if (settingsModal && settingsModal.classList.contains('active')) {
+                hideSettingsModal();
+            }
+        }
+    });
 }
 
 // Load theme from localStorage
 function loadTheme() {
-    const savedTheme = localStorage.getItem('flowsec-theme');
-    if (savedTheme === 'dark') {
-        document.body.setAttribute('data-theme', 'dark');
-        updateThemeIcon();
+    const savedTheme = localStorage.getItem('flowsec-theme') || 'light';
+    
+    if (savedTheme === 'auto') {
+        // Use system preference
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.body.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+    } else {
+        document.body.setAttribute('data-theme', savedTheme);
     }
+    
+    updateThemeIcon();
 }
 
 // Toggle dark/light theme
@@ -881,6 +919,123 @@ function updateThemeIcon() {
     
     if (icon) {
         icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
+    }
+}
+
+// Change theme based on selection
+function changeTheme(theme) {
+    if (theme === 'auto') {
+        // Use system preference
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.body.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+    } else {
+        document.body.setAttribute('data-theme', theme);
+    }
+    
+    localStorage.setItem('flowsec-theme', theme);
+    updateThemeIcon();
+    console.log('Theme changed to:', theme);
+}
+
+// Show settings modal
+function showSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) {
+        modal.classList.add('active');
+        
+        // Load current theme selection
+        const savedTheme = localStorage.getItem('flowsec-theme') || 'light';
+        document.getElementById('theme-select').value = savedTheme;
+        
+        // Update encryption status
+        const encryptionStatus = document.getElementById('encryption-status');
+        if (encryptionStatus) {
+            if (privateKey) {
+                encryptionStatus.innerHTML = '<i class="fas fa-check-circle" style="color: #4CAF50;"></i> End-to-end encryption enabled';
+            } else {
+                encryptionStatus.innerHTML = '<i class="fas fa-exclamation-triangle" style="color: #ff9800;"></i> Keys not loaded';
+            }
+        }
+        
+        // Update key fingerprint
+        const fingerprintEl = document.getElementById('key-fingerprint');
+        if (fingerprintEl && currentUser && currentUser.key_fingerprint) {
+            fingerprintEl.textContent = currentUser.key_fingerprint;
+        } else if (fingerprintEl) {
+            fingerprintEl.textContent = 'Not available';
+        }
+    }
+}
+
+// Hide settings modal
+function hideSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+// Handle file selection
+async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (!selectedUser) {
+        alert('Please select a user to send the file to');
+        event.target.value = ''; // Reset file input
+        return;
+    }
+    
+    if (!privateKey) {
+        alert('Encryption keys not loaded. Cannot send files.');
+        event.target.value = '';
+        return;
+    }
+    
+    // File size limit: 10MB
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+        alert('File size must be less than 10MB');
+        event.target.value = '';
+        return;
+    }
+    
+    console.log('📎 File selected:', file.name, 'Size:', (file.size / 1024).toFixed(2), 'KB');
+    
+    try {
+        // Show uploading message
+        const messagesArea = document.getElementById('messages-area');
+        const uploadingMsg = document.createElement('div');
+        uploadingMsg.className = 'file-upload-progress';
+        uploadingMsg.innerHTML = `
+            <div class="file-icon">
+                <i class="fas fa-file"></i>
+            </div>
+            <div class="file-upload-info">
+                <div class="file-name">${file.name}</div>
+                <div class="file-progress">Encrypting and uploading...</div>
+                <div class="progress-bar">
+                    <div class="progress-bar-fill" style="width: 0%"></div>
+                </div>
+            </div>
+        `;
+        messagesArea.appendChild(uploadingMsg);
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+        
+        // TODO: Implement file encryption and upload
+        // For now, show a message that file upload is coming soon
+        setTimeout(() => {
+            uploadingMsg.remove();
+            alert('File upload feature coming soon! Files will be encrypted before upload.');
+        }, 1500);
+        
+        // Reset file input
+        event.target.value = '';
+        
+    } catch (error) {
+        console.error('❌ File upload error:', error);
+        alert('Failed to upload file. Please try again.');
+        event.target.value = '';
     }
 }
 

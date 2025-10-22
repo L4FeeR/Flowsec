@@ -116,13 +116,14 @@
 
             <!-- Message Input -->
             <footer class="message-input-area">
-                <button class="btn-icon" title="Attach File">
+                <button class="btn-icon" id="attach-file-btn" title="Attach File">
                     <i class="fas fa-paperclip"></i>
                 </button>
+                <input type="file" id="file-input" style="display: none;" accept="*/*">
+                <input type="text" id="message-input" placeholder="Type a message..." disabled>
                 <button class="btn-icon" title="Emoji">
                     <i class="fas fa-smile"></i>
                 </button>
-                <input type="text" id="message-input" placeholder="Type a message..." disabled>
                 <button class="btn-send" id="send-btn" disabled>
                     <i class="fas fa-paper-plane"></i>
                 </button>
@@ -155,6 +156,80 @@
                     <i class="fas fa-sign-out-alt"></i>
                     Sign Out
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-content settings-modal">
+            <div class="modal-header">
+                <div class="modal-icon">
+                    <i class="fas fa-cog"></i>
+                </div>
+                <h3>Settings</h3>
+                <button class="btn-icon close-modal" id="close-settings">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body settings-body">
+                <!-- Appearance Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <i class="fas fa-palette"></i>
+                        <h4>Appearance</h4>
+                    </div>
+                    <div class="settings-item">
+                        <div class="settings-item-info">
+                            <label for="theme-select">Theme</label>
+                            <p>Choose your preferred theme</p>
+                        </div>
+                        <select id="theme-select" class="settings-select">
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                            <option value="auto">Auto (System)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Security Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <i class="fas fa-shield-alt"></i>
+                        <h4>Security</h4>
+                    </div>
+                    <div class="settings-item">
+                        <div class="settings-item-info">
+                            <label>Encryption Status</label>
+                            <p id="encryption-status">End-to-end encryption enabled</p>
+                        </div>
+                        <button class="btn-secondary" id="regenerate-keys-settings">
+                            <i class="fas fa-sync-alt"></i>
+                            Regenerate Keys
+                        </button>
+                    </div>
+                    <div class="settings-item">
+                        <div class="settings-item-info">
+                            <label>Key Fingerprint</label>
+                            <p id="key-fingerprint" style="font-family: monospace; font-size: 11px;">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- About Section -->
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <i class="fas fa-info-circle"></i>
+                        <h4>About</h4>
+                    </div>
+                    <div class="settings-item">
+                        <div class="settings-item-info">
+                            <label>Flowsec</label>
+                            <p>Secure, encrypted messaging platform</p>
+                        </div>
+                        <span class="version-badge">v1.0.0</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
