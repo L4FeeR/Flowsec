@@ -12,10 +12,21 @@ document.addEventListener('DOMContentLoaded', () => {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            // Send Magic Link
+            // Get email and password
             const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
             const submitBtn = document.getElementById('submit-btn');
             const btnText = document.getElementById('btn-text');
+            
+            // Validate password
+            if (!password || password.length < 8) {
+                alert('Password must be at least 8 characters');
+                return;
+            }
+            
+            // Store password temporarily for key decryption after magic link
+            sessionStorage.setItem('tempPassword', password);
+            sessionStorage.setItem('tempEmail', email);
             
             // Disable button and show loading
             submitBtn.disabled = true;
@@ -41,6 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Error: ' + error.message);
                 submitBtn.disabled = false;
                 btnText.textContent = 'Send Magic Link';
+                sessionStorage.removeItem('tempPassword');
+                sessionStorage.removeItem('tempEmail');
             } else {
                 console.log('Magic link sent successfully to:', email);
                 // Show success message
@@ -53,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </p>
                         <p style="color: #999; font-size: 14px;">
                             Click the link in your email to sign in.<br>
+                            Your password will be used to decrypt your keys.<br>
                             (Also check your spam folder)
                         </p>
                         <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
@@ -68,26 +82,40 @@ document.addEventListener('DOMContentLoaded', () => {
         signupForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            // Sign up user with magic link
+            // Get form values
             const name = document.getElementById('name').value;
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
             const gender = document.getElementById('gender').value;
             const profilePic = document.getElementById('profile-pic').files[0];
             
             const submitBtn = document.getElementById('submit-btn');
             const btnText = document.getElementById('btn-text');
             
+            // Validate passwords
+            if (password.length < 8) {
+                alert('Password must be at least 8 characters');
+                return;
+            }
+            
+            if (password !== confirmPassword) {
+                alert('Passwords do not match!');
+                return;
+            }
+            
             submitBtn.disabled = true;
             btnText.textContent = 'Creating...';
             
             console.log('Attempting signup for:', email);
             
-            // Store profile data before sending magic link
+            // Store profile data AND password before sending magic link
             localStorage.setItem('pendingName', name);
             localStorage.setItem('pendingUsername', username);
             localStorage.setItem('pendingGender', gender);
             localStorage.setItem('pendingEmail', email);
+            sessionStorage.setItem('pendingPassword', password); // Store in sessionStorage for security
             
             if (profilePic) {
                 // Store file for later upload

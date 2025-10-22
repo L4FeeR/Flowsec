@@ -127,10 +127,17 @@
                 const fingerprint = await EncryptionService.generateKeyFingerprint(keyPair.publicKey);
                 console.log('🔑 Key fingerprint:', fingerprint);
                 
-                // Store private key locally (encrypted with user's email as password)
-                const password = user.email; // Use email as password for simplicity
-                console.log('💾 Storing private key with userId:', user.id);
+                // Get password from sessionStorage (stored during signup)
+                const password = sessionStorage.getItem('pendingPassword') || user.email;
+                console.log('🔐 Using password for encryption:', password ? 'Yes' : 'No');
+                
+                // Store private key locally (encrypted with user's password)
+                console.log('💾 Storing private key locally with userId:', user.id);
                 await EncryptionService.storePrivateKey(keyPair.privateKey, user.id, password);
+                
+                // Also encrypt and prepare to upload to server
+                console.log('☁️ Encrypting private key for server backup...');
+                const encryptedPrivateKey = await EncryptionService.encryptPrivateKeyForBackup(keyPair.privateKey, password);
                 
                 console.log('✅ Encryption keys generated and stored');
                 console.log('📊 LocalStorage key used:', `flowsec-privatekey-${user.id}`);
@@ -239,7 +246,8 @@
                         gender: gender,
                         avatar_url: avatarUrl,
                         public_key: publicKeyBase64,
-                        key_fingerprint: fingerprint
+                        key_fingerprint: fingerprint,
+                        encrypted_private_key: encryptedPrivateKey
                     })
                     .select();                    if (profileError) {
                         throw new Error('Profile creation failed: ' + profileError.message);

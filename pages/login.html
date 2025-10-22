@@ -71,6 +71,15 @@
                         </div>
                     </div>
                     
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="password" placeholder="Enter your password" required minlength="8">
+                        </div>
+                        <small class="help-text">Required to decrypt your private keys</small>
+                    </div>
+                    
                     <button type="submit" class="btn-primary" id="submit-btn">
                         <span id="btn-text">Send Magic Link</span>
                         <i class="fas fa-paper-plane"></i>
@@ -83,7 +92,7 @@
                 
                 <div class="security-note">
                     <i class="fas fa-info-circle"></i>
-                    <span>We'll send a magic link to your email for passwordless login</span>
+                    <span>Enter your password, then click the magic link sent to your email</span>
                 </div>
             </div>
         </div>

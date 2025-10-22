@@ -212,7 +212,7 @@ body {
 
 .input-wrapper:focus-within i { color: var(--icon-color); }
 
-input[type="text"], input[type="email"], select {
+input[type="text"], input[type="email"], input[type="password"], select {
     width: 100%; padding: 0.875rem 1rem 0.875rem 3rem;
     border: 2px solid var(--border-color); border-radius: 12px;
     font-size: 1rem; font-family: inherit; background: var(--bg-tertiary);
@@ -220,8 +220,16 @@ input[type="text"], input[type="email"], select {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); outline: none;
 }
 
-input[type="text"]:focus, input[type="email"]:focus, select:focus {
+input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus, select:focus {
     border-color: var(--accent-primary); box-shadow: 0 0 0 4px var(--icon-bg);
+}
+
+.help-text {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    line-height: 1.4;
 }
 
 select {

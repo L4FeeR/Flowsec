@@ -405,6 +405,129 @@ const EncryptionService = {
             console.error('❌ Error generating fingerprint:', error);
             throw error;
         }
+    },
+
+    // Encrypt private key for server backup (password-based)
+    async encryptPrivateKeyForBackup(privateKey, password) {
+        try {
+            console.log('🔐 Encrypting private key for server backup...');
+            
+            // Export private key to JWK format
+            const privateKeyJWK = await window.crypto.subtle.exportKey('jwk', privateKey);
+            const privateKeyJSON = JSON.stringify(privateKeyJWK);
+            
+            // Generate random salt for PBKDF2
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            
+            // Derive AES key from password
+            const passwordKey = await window.crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(password),
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            const aesKey = await window.crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                passwordKey,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt']
+            );
+            
+            // Encrypt private key JWK with AES
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const encodedKey = new TextEncoder().encode(privateKeyJSON);
+            const encryptedKey = await window.crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: iv },
+                aesKey,
+                encodedKey
+            );
+            
+            // Combine salt + IV + encrypted key
+            const combined = new Uint8Array(salt.length + iv.length + encryptedKey.byteLength);
+            combined.set(salt, 0);
+            combined.set(iv, salt.length);
+            combined.set(new Uint8Array(encryptedKey), salt.length + iv.length);
+            
+            const encryptedBase64 = this.arrayBufferToBase64(combined);
+            console.log('✅ Private key encrypted for backup');
+            return encryptedBase64;
+        } catch (error) {
+            console.error('❌ Error encrypting private key for backup:', error);
+            throw error;
+        }
+    },
+
+    // Decrypt private key from server backup (password-based)
+    async decryptPrivateKeyFromBackup(encryptedBase64, password) {
+        try {
+            console.log('🔓 Decrypting private key from server backup...');
+            
+            // Decode base64
+            const combined = this.base64ToArrayBuffer(encryptedBase64);
+            
+            // Extract salt, IV, and encrypted key
+            const salt = combined.slice(0, 16);
+            const iv = combined.slice(16, 28);
+            const encryptedKey = combined.slice(28);
+            
+            // Derive AES key from password using the same salt
+            const passwordKey = await window.crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(password),
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            const aesKey = await window.crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                passwordKey,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['decrypt']
+            );
+            
+            // Decrypt the private key
+            const decryptedKey = await window.crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: iv },
+                aesKey,
+                encryptedKey
+            );
+            
+            // Parse JWK and import key
+            const privateKeyJSON = new TextDecoder().decode(decryptedKey);
+            const privateKeyJWK = JSON.parse(privateKeyJSON);
+            
+            const privateKey = await window.crypto.subtle.importKey(
+                'jwk',
+                privateKeyJWK,
+                {
+                    name: 'RSA-OAEP',
+                    hash: 'SHA-256'
+                },
+                true,
+                ['decrypt']
+            );
+            
+            console.log('✅ Private key decrypted from backup');
+            return privateKey;
+        } catch (error) {
+            console.error('❌ Error decrypting private key from backup:', error);
+            throw error;
+        }
     }
 };
 

@@ -168,16 +168,45 @@ async function loadPrivateKey() {
         
         console.log('🔍 Looking for private key for user:', currentUser.id);
         
-        // Check if private key exists for THIS user
+        // Get password from sessionStorage (set during login) or fallback to email
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        const password = sessionStorage.getItem('tempPassword') || user.email;
+        
+        // Check if private key exists in localStorage for THIS user
         if (!EncryptionService.hasPrivateKey(currentUser.id)) {
-            console.warn('⚠️ No private key found for this user. Checking if user has public key...');
+            console.warn('⚠️ No private key found in localStorage. Checking server...');
             
-            // If user has public key in database but no private key locally,
-            // they probably logged in on different device or cleared data
-            if (currentUser.public_key) {
-                console.warn('🔐 User has public key in DB but no private key locally');
+            // If user has public key in database, try to download encrypted private key from server
+            if (currentUser.public_key && currentUser.encrypted_private_key) {
+                console.log('🔐 Found encrypted private key on server, attempting to decrypt...');
+                
+                try {
+                    // Decrypt private key from server backup
+                    privateKey = await EncryptionService.decryptPrivateKeyFromBackup(
+                        currentUser.encrypted_private_key, 
+                        password
+                    );
+                    
+                    if (privateKey) {
+                        console.log('✅ Private key decrypted from server backup successfully');
+                        
+                        // Store in localStorage for faster access next time
+                        await EncryptionService.storePrivateKey(privateKey, currentUser.id, password);
+                        console.log('✅ Private key cached in localStorage');
+                        
+                        return; // Success!
+                    }
+                } catch (decryptError) {
+                    console.error('❌ Failed to decrypt private key from server:', decryptError);
+                    console.error('💡 This usually means wrong password or corrupted key');
+                    showEncryptionWarning();
+                    return;
+                }
+            } else if (currentUser.public_key) {
+                // User has public key but no encrypted private key backup
+                console.warn('🔐 User has public key in DB but no private key backup on server');
                 console.warn('💡 This user either:');
-                console.warn('   - Logged in on different device');
+                console.warn('   - Logged in on different device (before backup was implemented)');
                 console.warn('   - Cleared browser data');
                 console.warn('   - Is using incognito mode');
                 showEncryptionWarning();
@@ -187,17 +216,13 @@ async function loadPrivateKey() {
             return;
         }
         
-        // Get user's email as password
-        const { data: { user } } = await supabaseClient.auth.getUser();
-        const password = user.email;
+        console.log('🔓 Attempting to decrypt private key from localStorage...');
         
-        console.log('🔓 Attempting to decrypt private key...');
-        
-        // Retrieve and decrypt private key
+        // Retrieve and decrypt private key from localStorage
         privateKey = await EncryptionService.retrievePrivateKey(currentUser.id, password);
         
         if (privateKey) {
-            console.log('✅ Private key loaded and decrypted successfully');
+            console.log('✅ Private key loaded and decrypted successfully from localStorage');
         } else {
             console.error('❌ Private key retrieved but is null/undefined');
             showEncryptionWarning();
@@ -210,7 +235,7 @@ async function loadPrivateKey() {
         // If decryption fails, the stored key might be corrupted or for wrong user
         // Clear the invalid key
         if (currentUser && currentUser.id) {
-            const keyName = `encrypted_privateKey_${currentUser.id}`;
+            const keyName = `flowsec-privatekey-${currentUser.id}`;
             console.warn('🗑️ Removing potentially corrupted key:', keyName);
             localStorage.removeItem(keyName);
         }
@@ -1067,7 +1092,7 @@ async function confirmSignOut() {
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && (key.startsWith('privateKey_') || key.startsWith('encrypted_privateKey_'))) {
+            if (key && (key.startsWith('privateKey_') || key.startsWith('encrypted_privateKey_') || key.startsWith('flowsec-privatekey-'))) {
                 keysToRemove.push(key);
             }
         }
@@ -1075,6 +1100,12 @@ async function confirmSignOut() {
             console.log('🗑️ Removing key:', key);
             localStorage.removeItem(key);
         });
+        
+        // Clear password from sessionStorage
+        sessionStorage.removeItem('tempPassword');
+        sessionStorage.removeItem('pendingPassword');
+        sessionStorage.removeItem('tempEmail');
+        console.log('🗑️ Cleared password from sessionStorage');
         
         console.log('✅ Cleared encryption keys from device');
         
