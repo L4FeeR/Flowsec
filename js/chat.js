@@ -544,9 +544,11 @@ async function loadMessages() {
         `;
         
         // Fetch messages between current user and selected user
+        // Prefer selecting the plaintext 'content' if present, but keep encrypted fields for backward compatibility
         const { data: messages, error } = await supabaseClient
             .from('messages')
-            .select('*')
+            // Include the app-level encrypted columns so messages can be decrypted after relogin
+            .select('id, sender_id, receiver_id, content, app_ciphertext, app_iv, encrypted_content, encrypted_aes_key, iv, created_at')
             .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedUser.id}),and(sender_id.eq.${selectedUser.id},receiver_id.eq.${currentUser.id})`)
             .order('created_at', { ascending: true });
         
@@ -574,28 +576,26 @@ async function loadMessages() {
             try {
                 let decryptedText;
                 
-                // Decrypt the message
-                if (msg.encrypted_content && msg.encrypted_aes_key && msg.iv) {
-                    console.log('🔓 Decrypting message...');
-                    
-                    if (!privateKey) {
-                        console.warn('⚠️ No private key available to decrypt message');
-                        decryptedText = '[Encrypted message - key not available]';
+                // Prefer server-stored plaintext 'content' for readability across devices
+                    if (msg.content) {
+                        decryptedText = msg.content;
+                    } else if (msg.app_ciphertext && msg.app_iv) {
+                        console.log('🔓 Decrypting message using Supabase function...');
+
+                        const { data: decData, error: decError } = await supabaseClient.functions.invoke('decrypt', {
+                            body: JSON.stringify({ ciphertext: msg.app_ciphertext, iv: msg.app_iv })
+                        });
+
+                        if (decError || !decData) {
+                            console.error('❌ Decrypt function error:', decError, decData);
+                            decryptedText = '[Failed to decrypt message]';
+                        } else {
+                            decryptedText = decData.plaintext;
+                        }
                     } else {
-                        // Decrypt using our private key
-                        const encryptedPackage = {
-                            encryptedData: msg.encrypted_content,
-                            encryptedAESKey: msg.encrypted_aes_key,
-                            iv: msg.iv
-                        };
-                        
-                        decryptedText = await EncryptionService.decryptMessage(encryptedPackage, privateKey);
-                        console.log('✅ Message decrypted successfully');
+                        // No content at all
+                        decryptedText = '[No content]';
                     }
-                } else {
-                    // Fallback for unencrypted messages (shouldn't happen)
-                    decryptedText = msg.content || '[No content]';
-                }
                 
                 // Display the message
                 displayMessage({
@@ -641,110 +641,55 @@ async function sendMessage() {
     const message = input.value.trim();
     
     if (!message || !selectedUser) return;
-    
-    // Check if encryption is available
-    if (!selectedUser.public_key) {
-        showError('⚠️ This user does not have encryption enabled. Cannot send encrypted message.');
-        return;
-    }
-    
-    if (!privateKey) {
-        console.warn('⚠️ Private key not loaded, attempting to reload...');
-        
-        // Try to reload private key
-        await loadPrivateKey();
-        
-        // Check again
-        if (!privateKey) {
-            console.error('❌ Still no private key after reload attempt');
-            showEncryptionWarning();
-            return;
-        }
-        
-        console.log('✅ Private key reloaded successfully');
-    }
-    
     try {
-        console.log('📤 Encrypting message...');
-        console.log('📋 Sender ID:', currentUser.id);
-        console.log('📋 Receiver ID:', selectedUser.id);
-        console.log('📋 Receiver public key exists:', !!selectedUser.public_key);
-        
-        // Import recipient's public key
-        const recipientPublicKey = await EncryptionService.importPublicKey(selectedUser.public_key);
-        console.log('✅ Recipient public key imported');
-        
-        // Encrypt message
-        const encryptedPackage = await EncryptionService.encryptMessage(message, recipientPublicKey);
-        
-        console.log('✅ Message encrypted successfully');
-        console.log('📦 Encrypted package:', {
-            encryptedData: encryptedPackage.encryptedData?.substring(0, 50) + '...',
-            encryptedAESKey: encryptedPackage.encryptedAESKey?.substring(0, 50) + '...',
-            iv: encryptedPackage.iv?.substring(0, 20) + '...'
-        });
-        
-        // Save encrypted message to database
-        console.log('💾 Saving encrypted message to database...');
-        console.log('📡 Attempting insert into messages table...');
-        
-        const messagePayload = {
-            sender_id: currentUser.id,
-            receiver_id: selectedUser.id,
-            encrypted_content: encryptedPackage.encryptedData,
-            encrypted_aes_key: encryptedPackage.encryptedAESKey,
-            iv: encryptedPackage.iv,
-            created_at: new Date().toISOString()
-        };
-        
-        console.log('📦 Message payload ready:', {
-            sender_id: messagePayload.sender_id,
-            receiver_id: messagePayload.receiver_id,
-            has_encrypted_content: !!messagePayload.encrypted_content,
-            has_encrypted_key: !!messagePayload.encrypted_aes_key,
-            has_iv: !!messagePayload.iv
-        });
-        
+        // Simpler message flow: store plaintext `content` on server so messages are readable after relogin.
+        console.log('📤 Sending message (server-stored content)');
+
+            // Ask server-side function to encrypt message using the app key (so key is never in client code)
+            const { data: encData, error: encError } = await supabaseClient.functions.invoke('encrypt', {
+                body: JSON.stringify({ message })
+            });
+
+            if (encError || !encData) {
+                console.error('❌ Encryption function error:', encError, encData);
+                showError('Failed to encrypt message on server');
+                return;
+            }
+
+            const messagePayload = {
+                sender_id: currentUser.id,
+                receiver_id: selectedUser.id,
+                app_ciphertext: encData.ciphertext,
+                app_iv: encData.iv,
+                created_at: new Date().toISOString()
+            };
+
         const { data: messageData, error: saveError } = await supabaseClient
             .from('messages')
             .insert(messagePayload)
             .select()
             .single();
-        
+
         if (saveError) {
             console.error('❌ Database save error:', saveError);
-            console.error('Error code:', saveError.code);
-            console.error('Error message:', saveError.message);
-            console.error('Error details:', saveError.details);
-            console.error('Error hint:', saveError.hint);
-            
-            // Show user-friendly error
-            if (saveError.code === '42P01') {
-                showError('❌ Messages table does not exist. Please contact administrator.');
-            } else if (saveError.code === '42501') {
-                showError('❌ Permission denied. Check database policies.');
-            } else {
-                showError(`❌ Failed to save message: ${saveError.message}`);
-            }
-            
+            showError(`❌ Failed to save message: ${saveError.message}`);
             throw saveError;
         }
-        
+
         console.log('✅ Message saved to database:', messageData);
-        
-        // Display message immediately (unencrypted for sender)
+
+        // Display message immediately
         displayMessage({
             text: message,
             sender_id: currentUser.id,
             created_at: messageData.created_at,
-            encrypted: true
+            encrypted: false
         });
-        
-        // Clear input
+
         input.value = '';
-        
+
     } catch (error) {
-        console.error('❌ Error sending encrypted message:', error);
+        console.error('❌ Error sending message:', error);
         alert('Failed to send message: ' + error.message);
     }
 }

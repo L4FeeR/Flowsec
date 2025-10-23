@@ -620,3 +620,49 @@ const EncryptionService = {
 // Export for use in other modules
 window.EncryptionService = EncryptionService;
 console.log('🔐 Encryption Service initialized');
+
+// App-level encryption helpers (not E2EE)
+EncryptionService.importAppKeyFromBase64 = async function(base64Key) {
+    try {
+        const raw = this.base64ToArrayBuffer(base64Key);
+        return await window.crypto.subtle.importKey(
+            'raw',
+            raw,
+            { name: 'AES-GCM' },
+            false,
+            ['encrypt', 'decrypt']
+        );
+    } catch (error) {
+        console.error('❌ Error importing app key:', error);
+        throw error;
+    }
+};
+
+EncryptionService.encryptForApp = async function(plaintext, appKeyBase64) {
+    try {
+        const key = await this.importAppKeyFromBase64(appKeyBase64);
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const encoded = new TextEncoder().encode(plaintext);
+        const encrypted = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+        return {
+            iv: this.arrayBufferToBase64(iv.buffer),
+            ciphertext: this.arrayBufferToBase64(encrypted)
+        };
+    } catch (error) {
+        console.error('❌ Error encrypting for app:', error);
+        throw error;
+    }
+};
+
+EncryptionService.decryptForApp = async function(ciphertextBase64, ivBase64, appKeyBase64) {
+    try {
+        const key = await this.importAppKeyFromBase64(appKeyBase64);
+        const iv = new Uint8Array(this.base64ToArrayBuffer(ivBase64));
+        const ciphertext = this.base64ToArrayBuffer(ciphertextBase64);
+        const decrypted = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+        return new TextDecoder().decode(decrypted);
+    } catch (error) {
+        console.error('❌ Error decrypting for app:', error);
+        throw error;
+    }
+};
