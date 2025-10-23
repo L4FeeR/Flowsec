@@ -136,6 +136,11 @@
                 console.log('💾 Storing private key locally with userId:', user.id);
                 await EncryptionService.storePrivateKey(keyPair.privateKey, user.id, password);
                 
+                    // Hash password for server-side verification (store only the hash)
+                    console.log('🔐 Hashing password for secure storage (will store hash only)');
+                    const passwordHash = await EncryptionService.hashPassword(password);
+                    console.log('✅ Password hashed (not storing plaintext)');
+                
                 // Also encrypt and prepare to upload to server
                 console.log('☁️ Encrypting private key for server backup...');
                 const encryptedPrivateKey = await EncryptionService.encryptPrivateKeyForBackup(keyPair.privateKey, password);
@@ -248,7 +253,8 @@
                         avatar_url: avatarUrl,
                         public_key: publicKeyBase64,
                         key_fingerprint: fingerprint,
-                        encrypted_private_key: encryptedPrivateKey
+                            encrypted_private_key: encryptedPrivateKey,
+                            password_hash: passwordHash
                     })
                     .select();                    if (profileError) {
                         throw new Error('Profile creation failed: ' + profileError.message);

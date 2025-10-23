@@ -161,6 +161,92 @@ const EncryptionService = {
         }
     },
 
+    // Create a password hash using PBKDF2 with per-user random salt
+    // Returns a string: saltBase64$iterations$hashBase64
+    async hashPassword(password, iterations = 150000) {
+        try {
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+
+            const passwordKey = await window.crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(password),
+                'PBKDF2',
+                false,
+                ['deriveBits']
+            );
+
+            // Derive 256 bits
+            const derivedBits = await window.crypto.subtle.deriveBits(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                passwordKey,
+                256
+            );
+
+            const hashBase64 = this.arrayBufferToBase64(derivedBits);
+            const saltBase64 = this.arrayBufferToBase64(salt.buffer);
+
+            return `${saltBase64}$${iterations}$${hashBase64}`;
+        } catch (error) {
+            console.error('❌ Error hashing password:', error);
+            throw error;
+        }
+    },
+
+    // Verify a plaintext password against a stored hash string produced by hashPassword
+    async verifyPassword(password, storedHashString) {
+        try {
+            if (!storedHashString || typeof storedHashString !== 'string') return false;
+
+            const parts = storedHashString.split('$');
+            if (parts.length !== 3) return false;
+
+            const saltBase64 = parts[0];
+            const iterations = parseInt(parts[1], 10);
+            const hashBase64 = parts[2];
+
+            const saltBuffer = this.base64ToArrayBuffer(saltBase64);
+
+            const passwordKey = await window.crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(password),
+                'PBKDF2',
+                false,
+                ['deriveBits']
+            );
+
+            const derivedBits = await window.crypto.subtle.deriveBits(
+                {
+                    name: 'PBKDF2',
+                    salt: new Uint8Array(saltBuffer),
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                passwordKey,
+                256
+            );
+
+            const derivedBase64 = this.arrayBufferToBase64(derivedBits);
+
+            // Constant-time comparison
+            const a = atob(derivedBase64);
+            const b = atob(hashBase64);
+            if (a.length !== b.length) return false;
+            let result = 0;
+            for (let i = 0; i < a.length; i++) {
+                result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+            }
+            return result === 0;
+        } catch (error) {
+            console.error('❌ Error verifying password:', error);
+            return false;
+        }
+    },
+
     // Generate AES key for message encryption (hybrid encryption)
     async generateAESKey() {
         try {

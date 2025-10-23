@@ -110,6 +110,7 @@ async function loadCurrentUser() {
         if (authError) throw authError;
         
         // Get profile from database
+        // For the current user we need full profile (including encrypted_private_key/password_hash)
         const { data: profile, error: profileError } = await supabaseClient
             .from('profiles')
             .select('*')
@@ -177,32 +178,46 @@ async function loadPrivateKey() {
             console.warn('⚠️ No private key found in localStorage. Checking server...');
             
             // If user has public key in database, try to download encrypted private key from server
-            if (currentUser.public_key && currentUser.encrypted_private_key) {
-                console.log('🔐 Found encrypted private key on server, attempting to decrypt...');
-                
-                try {
-                    // Decrypt private key from server backup
-                    privateKey = await EncryptionService.decryptPrivateKeyFromBackup(
-                        currentUser.encrypted_private_key, 
-                        password
-                    );
-                    
-                    if (privateKey) {
-                        console.log('✅ Private key decrypted from server backup successfully');
-                        
-                        // Store in localStorage for faster access next time
-                        await EncryptionService.storePrivateKey(privateKey, currentUser.id, password);
-                        console.log('✅ Private key cached in localStorage');
-                        
-                        return; // Success!
+                if (currentUser.public_key && currentUser.encrypted_private_key) {
+                    console.log('🔐 Found encrypted private key on server, attempting to decrypt...');
+
+                    // If a password hash exists in profile, verify password before attempting decrypt
+                    if (currentUser.password_hash) {
+                        console.log('🔎 Verifying provided password against stored password hash...');
+                        const verified = await EncryptionService.verifyPassword(password, currentUser.password_hash);
+                        if (!verified) {
+                            console.error('❌ Password verification failed. Will not attempt decryption.');
+                            showEncryptionWarning();
+                            return;
+                        }
+                        console.log('✅ Password verification succeeded');
+                    } else {
+                        console.log('ℹ️ No password hash stored on profile; attempting decryption directly');
                     }
-                } catch (decryptError) {
-                    console.error('❌ Failed to decrypt private key from server:', decryptError);
-                    console.error('💡 This usually means wrong password or corrupted key');
-                    showEncryptionWarning();
-                    return;
-                }
-            } else if (currentUser.public_key) {
+
+                    try {
+                        // Decrypt private key from server backup
+                        privateKey = await EncryptionService.decryptPrivateKeyFromBackup(
+                            currentUser.encrypted_private_key, 
+                            password
+                        );
+
+                        if (privateKey) {
+                            console.log('✅ Private key decrypted from server backup successfully');
+
+                            // Store in localStorage for faster access next time
+                            await EncryptionService.storePrivateKey(privateKey, currentUser.id, password);
+                            console.log('✅ Private key cached in localStorage');
+
+                            return; // Success!
+                        }
+                    } catch (decryptError) {
+                        console.error('❌ Failed to decrypt private key from server:', decryptError);
+                        console.error('💡 This usually means wrong password or corrupted key');
+                        showEncryptionWarning();
+                        return;
+                    }
+                } else if (currentUser.public_key) {
                 // User has public key but no encrypted private key backup
                 console.warn('🔐 User has public key in DB but no private key backup on server');
                 console.warn('💡 This user either:');
@@ -275,9 +290,10 @@ async function loadUsers() {
         
         // First, get ALL users to see what's in database
         console.log('📡 Fetching ALL users from database...');
+        // When listing all users for debugging/public lists, explicitly select safe fields only
         const { data: allDbUsers, error: allError } = await supabaseClient
             .from('profiles')
-            .select('*')
+            .select('id, name, username, avatar_url, public_key, key_fingerprint, created_at')
             .order('created_at', { ascending: false });
         
         if (allError) {
@@ -303,9 +319,10 @@ async function loadUsers() {
         
         // Now get users excluding current user (keep for search)
         console.log('📡 Fetching OTHER users (excluding current user)...');
+        // For other users shown in the UI, fetch only non-sensitive profile columns
         const { data: users, error } = await supabaseClient
             .from('profiles')
-            .select('*')
+            .select('id, name, username, avatar_url, public_key, key_fingerprint')
             .neq('id', currentUser.id)
             .order('created_at', { ascending: false });
         
