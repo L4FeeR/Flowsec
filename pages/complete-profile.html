@@ -91,7 +91,21 @@
             
             try {
                 console.log('=== PROFILE COMPLETION STARTED ===');
-                
+
+                // If the user arrived via magic link redirect, parse the session from the URL first
+                // (Supabase returns access tokens in the URL after magic link flow)
+                try {
+                    const { data: urlSession, error: urlSessionError } = await supabaseClient.auth.getSessionFromUrl();
+                    if (urlSessionError) {
+                        // Not necessarily an error; session may already be present or no tokens in URL
+                        console.log('No session token found in URL or already handled:', urlSessionError.message || urlSessionError);
+                    } else {
+                        console.log('Session established from URL:', urlSession);
+                    }
+                } catch (e) {
+                    console.warn('getSessionFromUrl() threw an error (continuing):', e?.message || e);
+                }
+
                 // Get the current authenticated user
                 const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
                 
