@@ -6,4 +6,4 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 // Application-level encryption key (Base64-encoded 32 bytes).
 // WARNING: For production, do NOT store this in client-side code. Move to a secure server / environment.
-const SUPABASE_APP_KEY = 'REPLACE_WITH_BASE64_32_BYTE_KEY==';
+const SUPABASE_APP_KEY = 'oXDQvqjA5J5pEV8XMYlWt4QXS78QRwXX/AJ79l7eEPI=';
