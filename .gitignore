@@ -1,4 +1,11 @@
-# Environment variables (never commit these!)
+# Ignore SQL migration files and markdown docs as requested
+*.sql
+*.md
+
+# Node / editor artifacts (keep safe defaults)
+node_modules/
+.env
+.DS_Store# Environment variables (never commit these!)
 .env
 .env.local
 .env.production
