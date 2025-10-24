@@ -193,5 +193,13 @@ class VirusTotalService {
     }
 }
 
-// Global instance (initialized in config)
+// Global instance - auto-initialize with API key from config
 let virusTotalService = null;
+
+// Auto-initialize when config is loaded
+if (typeof VIRUSTOTAL_API_KEY !== 'undefined' && VIRUSTOTAL_API_KEY) {
+    virusTotalService = new VirusTotalService(VIRUSTOTAL_API_KEY);
+    console.log('✅ VirusTotal service initialized with API key');
+} else {
+    console.warn('⚠️ VirusTotal API key not found - file scanning will be disabled');
+}

@@ -58,14 +58,19 @@ class FileService {
             let vtScanId = null;
             let vtStatus = 'pending';
             
-            try {
-                const scanResult = await virusTotalService.scanFile(file);
-                vtScanId = scanResult.scanId;
-                vtStatus = 'scanning';
-                console.log('✅ VirusTotal scan initiated:', vtScanId);
-            } catch (vtError) {
-                console.error('⚠️ VirusTotal scan failed:', vtError);
+            if (!virusTotalService) {
+                console.warn('⚠️ VirusTotal service not available - skipping scan');
                 vtStatus = 'error';
+            } else {
+                try {
+                    const scanResult = await virusTotalService.scanFile(file);
+                    vtScanId = scanResult.scanId;
+                    vtStatus = 'scanning';
+                    console.log('✅ VirusTotal scan initiated:', vtScanId);
+                } catch (vtError) {
+                    console.error('⚠️ VirusTotal scan failed:', vtError);
+                    vtStatus = 'error';
+                }
             }
 
             // 5. Save file metadata to database
@@ -119,6 +124,11 @@ class FileService {
     async pollVirusTotalResults(fileId, scanId) {
         const maxAttempts = 20;
         const pollInterval = 10000; // 10 seconds
+
+        if (!virusTotalService) {
+            console.warn('⚠️ VirusTotal service not available - cannot poll results');
+            return;
+        }
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             await new Promise(resolve => setTimeout(resolve, pollInterval));

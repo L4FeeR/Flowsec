@@ -9,14 +9,6 @@ let privateKey = null; // Store decrypted private key in memory
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Chat dashboard initializing...');
     
-    // Initialize VirusTotal service
-    if (typeof VIRUSTOTAL_API_KEY !== 'undefined' && VIRUSTOTAL_API_KEY) {
-        virusTotalService = new VirusTotalService(VIRUSTOTAL_API_KEY);
-        console.log('✅ VirusTotal service initialized');
-    } else {
-        console.warn('⚠️ VirusTotal API key not configured');
-    }
-    
     // Load theme preference
     loadTheme();
     
