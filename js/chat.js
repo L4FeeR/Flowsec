@@ -289,10 +289,10 @@ async function loadUsers() {
         }
         
         // First, get ALL users to see what's in database
-        console.log('📡 Fetching ALL users from database...');
-        // When listing all users for debugging/public lists, explicitly select safe fields only
+        console.log('📡 Fetching ALL users from database (public view)...');
+        // Query the safe public view (public_profiles) so RLS doesn't leak sensitive fields
         const { data: allDbUsers, error: allError } = await supabaseClient
-            .from('profiles')
+            .from('public_profiles')
             .select('id, name, username, avatar_url, public_key, key_fingerprint, created_at')
             .order('created_at', { ascending: false });
         
@@ -321,7 +321,7 @@ async function loadUsers() {
         console.log('📡 Fetching OTHER users (excluding current user)...');
         // For other users shown in the UI, fetch only non-sensitive profile columns
         const { data: users, error } = await supabaseClient
-            .from('profiles')
+            .from('public_profiles')
             .select('id, name, username, avatar_url, public_key, key_fingerprint')
             .neq('id', currentUser.id)
             .order('created_at', { ascending: false });
@@ -547,8 +547,8 @@ async function loadMessages() {
         // Prefer selecting the plaintext 'content' if present, but keep encrypted fields for backward compatibility
         const { data: messages, error } = await supabaseClient
             .from('messages')
-            // Include the app-level encrypted columns so messages can be decrypted after relogin
-            .select('id, sender_id, receiver_id, content, app_ciphertext, app_iv, encrypted_content, encrypted_aes_key, iv, created_at')
+            // Request only columns that actually exist in the messages table (avoid selecting `content` if it's absent)
+            .select('id, sender_id, receiver_id, app_ciphertext, app_iv, encrypted_content, encrypted_aes_key, iv, created_at')
             .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedUser.id}),and(sender_id.eq.${selectedUser.id},receiver_id.eq.${currentUser.id})`)
             .order('created_at', { ascending: true });
         
