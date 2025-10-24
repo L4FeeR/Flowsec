@@ -448,9 +448,11 @@ function displayUsers(users) {
     
     usersList.innerHTML = users.map(user => {
         const avatarUrl = user.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.username)}&background=random&color=fff`;
-        const hasEncryption = user.public_key ? '🔐' : '';
+        const encryptionBadge = user.public_key 
+            ? '<span style="color: #4CAF50; font-size: 14px;" title="End-to-end encryption enabled">🔐</span>' 
+            : '<span style="color: #ff9800; font-size: 14px;" title="No encryption key - user needs to complete setup">⚠️</span>';
         
-        console.log('👤 Rendering user:', user.name, user.username, 'ID:', user.id);
+        console.log('👤 Rendering user:', user.name, user.username, 'ID:', user.id, 'Has key:', !!user.public_key);
         
         return `
             <div class="user-item" data-user-id="${user.id}">
@@ -459,7 +461,7 @@ function displayUsers(users) {
                     <span class="online-indicator"></span>
                 </div>
                 <div class="user-item-info">
-                    <h4>${user.name || user.username} ${hasEncryption}</h4>
+                    <h4>${user.name || user.username} ${encryptionBadge}</h4>
                     <p>@${user.username}</p>
                 </div>
             </div>
@@ -660,7 +662,30 @@ async function sendMessage() {
         console.log('📤 Sending E2EE message');
 
         if (!selectedUser.public_key) {
-            showError('Recipient does not have a public key set; cannot send E2EE message');
+            console.error('❌ Recipient does not have a public key');
+            showError(
+                `Cannot send encrypted message to ${selectedUser.name || selectedUser.username}.\n` +
+                `They need to complete their profile setup first.\n` +
+                `Ask them to log in and complete their encryption key setup.`
+            );
+            
+            // Reload user data in case they just set up their key
+            console.log('🔄 Attempting to reload recipient data...');
+            const { data: updatedUser, error: refreshError } = await supabaseClient
+                .from('profiles')
+                .select('id, name, username, avatar_url, public_key, key_fingerprint')
+                .eq('id', selectedUser.id)
+                .single();
+            
+            if (!refreshError && updatedUser && updatedUser.public_key) {
+                console.log('✅ Recipient now has a public key! Updating selectedUser...');
+                selectedUser = updatedUser;
+                updateChatHeader(); // Update UI to show encryption status
+                
+                // Retry sending
+                console.log('🔄 Retrying message send...');
+                await sendMessage();
+            }
             return;
         }
 
