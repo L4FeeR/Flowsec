@@ -223,7 +223,7 @@
                     }
                 }
                 
-                // Check if profile already exists
+                // Check if profile already exists (trigger may have created it)
                 const { data: existingProfile } = await supabaseClient
                     .from('profiles')
                     .select('*')
@@ -231,22 +231,61 @@
                     .single();
                 
                 if (existingProfile) {
-                    console.log('⚠️ Profile already exists for this user!');
+                    console.log('⚠️ Profile already exists (created by trigger)');
                     console.log('Existing profile:', existingProfile);
-                    console.log('Skipping profile creation and redirecting...');
                     
-                    // Clear stored data
-                    localStorage.removeItem('pendingName');
-                    localStorage.removeItem('pendingUsername');
-                    localStorage.removeItem('pendingGender');
-                    localStorage.removeItem('pendingEmail');
-                    localStorage.removeItem('pendingProfilePic');
+                    // Check if it already has encryption keys
+                    if (existingProfile.public_key && existingProfile.password_hash) {
+                        console.log('✅ Profile already complete with encryption keys');
+                        
+                        // Clear stored data
+                        localStorage.removeItem('pendingName');
+                        localStorage.removeItem('pendingUsername');
+                        localStorage.removeItem('pendingGender');
+                        localStorage.removeItem('pendingEmail');
+                        localStorage.removeItem('pendingProfilePic');
+                        sessionStorage.removeItem('pendingPassword');
+                        
+                        // Redirect to chat
+                        window.location.href = 'chat.html';
+                        return; // Stop execution
+                    }
                     
-                    // Redirect to chat
-                    window.location.href = 'chat.html';
-                    return; // Stop execution
+                    console.log('🔄 Updating existing profile with encryption keys and full data...');
+                    
+                    // Update existing profile with all the data
+                    const { data: updatedProfile, error: updateError } = await supabaseClient
+                        .from('profiles')
+                        .update({
+                            name: name,
+                            username: username,
+                            gender: gender,
+                            avatar_url: avatarUrl,
+                            public_key: publicKeyBase64,
+                            key_fingerprint: fingerprint,
+                            encrypted_private_key: encryptedPrivateKey,
+                            password_hash: passwordHash,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', user.id)
+                        .select()
+                        .single();
+                    
+                    if (updateError) {
+                        console.error('❌ Profile update failed', updateError);
+                        throw new Error('Profile update failed: ' + (updateError.details || updateError.message));
+                    }
+                    
+                    console.log('✅ Profile updated successfully:', updatedProfile);
+                    console.log('Verify updated fields:', {
+                        hasUsername: !!updatedProfile.username,
+                        hasPublicKey: !!updatedProfile.public_key,
+                        hasEncryptedPrivateKey: !!updatedProfile.encrypted_private_key,
+                        hasPasswordHash: !!updatedProfile.password_hash
+                    });
+                    
                 } else {
-                // Insert profile data with public key
+                // Insert profile data with public key (trigger didn't create it yet)
                 console.log('✨ Creating NEW profile with data:', { 
                     userId: user.id,
                     email: user.email,
@@ -314,6 +353,7 @@
                 localStorage.removeItem('pendingGender');
                 localStorage.removeItem('pendingProfilePic');
                 localStorage.removeItem('pendingEmail');
+                sessionStorage.removeItem('pendingPassword'); // Clear password from session storage
                 
                 // Show success message with encryption info
                 setupContent.innerHTML = `
