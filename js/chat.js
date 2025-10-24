@@ -544,11 +544,10 @@ async function loadMessages() {
         `;
         
         // Fetch messages between current user and selected user
-        // Prefer selecting the plaintext 'content' if present, but keep encrypted fields for backward compatibility
+        // We store E2EE messages as: encrypted_content, encrypted_aes_key, iv
         const { data: messages, error } = await supabaseClient
             .from('messages')
-            // Request only columns that actually exist in the messages table (avoid selecting `content` if it's absent)
-            .select('id, sender_id, receiver_id, app_ciphertext, app_iv, encrypted_content, encrypted_aes_key, iv, created_at')
+            .select('id, sender_id, receiver_id, encrypted_content, encrypted_aes_key, iv, app_ciphertext, app_iv, created_at')
             .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedUser.id}),and(sender_id.eq.${selectedUser.id},receiver_id.eq.${currentUser.id})`)
             .order('created_at', { ascending: true });
         
@@ -576,26 +575,41 @@ async function loadMessages() {
             try {
                 let decryptedText;
                 
-                // Prefer server-stored plaintext 'content' for readability across devices
-                    if (msg.content) {
-                        decryptedText = msg.content;
-                    } else if (msg.app_ciphertext && msg.app_iv) {
-                        console.log('🔓 Decrypting message using Supabase function...');
-
-                        const { data: decData, error: decError } = await supabaseClient.functions.invoke('decrypt', {
-                            body: JSON.stringify({ ciphertext: msg.app_ciphertext, iv: msg.app_iv })
-                        });
-
-                        if (decError || !decData) {
-                            console.error('❌ Decrypt function error:', decError, decData);
-                            decryptedText = '[Failed to decrypt message]';
-                        } else {
-                            decryptedText = decData.plaintext;
-                        }
+                // Decrypt E2EE message locally using the user's private key
+                if (msg.encrypted_content && msg.encrypted_aes_key && msg.iv) {
+                    if (!privateKey) {
+                        console.warn('🔒 Private key not loaded; cannot decrypt message');
+                        decryptedText = '[Encrypted message — keys not loaded]';
                     } else {
-                        // No content at all
-                        decryptedText = '[No content]';
+                        try {
+                            const packageObj = {
+                                encryptedAESKey: msg.encrypted_aes_key,
+                                iv: msg.iv,
+                                encryptedData: msg.encrypted_content
+                            };
+                            decryptedText = await EncryptionService.decryptMessage(packageObj, privateKey);
+                        } catch (e) {
+                            console.error('❌ Failed to decrypt message locally:', e);
+                            decryptedText = '[Failed to decrypt message]';
+                        }
                     }
+                } else if (msg.app_ciphertext && msg.app_iv) {
+                    // Fallback to app-level ciphertext (legacy)
+                    console.log('🔓 Decrypting legacy app-level ciphertext using Supabase function...');
+
+                    const { data: decData, error: decError } = await supabaseClient.functions.invoke('decrypt', {
+                        body: JSON.stringify({ ciphertext: msg.app_ciphertext, iv: msg.app_iv })
+                    });
+
+                    if (decError || !decData) {
+                        console.error('❌ Decrypt function error:', decError, decData);
+                        decryptedText = '[Failed to decrypt message]';
+                    } else {
+                        decryptedText = decData.plaintext;
+                    }
+                } else {
+                    decryptedText = '[No content]';
+                }
                 
                 // Display the message
                 displayMessage({
@@ -642,27 +656,26 @@ async function sendMessage() {
     
     if (!message || !selectedUser) return;
     try {
-        // Simpler message flow: store plaintext `content` on server so messages are readable after relogin.
-        console.log('📤 Sending message (server-stored content)');
+        // E2EE flow: encrypt message with recipient's public key (hybrid RSA-OAEP + AES-GCM)
+        console.log('📤 Sending E2EE message');
 
-            // Ask server-side function to encrypt message using the app key (so key is never in client code)
-            const { data: encData, error: encError } = await supabaseClient.functions.invoke('encrypt', {
-                body: JSON.stringify({ message })
-            });
+        if (!selectedUser.public_key) {
+            showError('Recipient does not have a public key set; cannot send E2EE message');
+            return;
+        }
 
-            if (encError || !encData) {
-                console.error('❌ Encryption function error:', encError, encData);
-                showError('Failed to encrypt message on server');
-                return;
-            }
+        // Import recipient public key and encrypt
+        const recipientPub = await EncryptionService.importPublicKey(selectedUser.public_key);
+        const encryptedPackage = await EncryptionService.encryptMessage(message, recipientPub);
 
-            const messagePayload = {
-                sender_id: currentUser.id,
-                receiver_id: selectedUser.id,
-                app_ciphertext: encData.ciphertext,
-                app_iv: encData.iv,
-                created_at: new Date().toISOString()
-            };
+        const messagePayload = {
+            sender_id: currentUser.id,
+            receiver_id: selectedUser.id,
+            encrypted_content: encryptedPackage.encryptedData,
+            encrypted_aes_key: encryptedPackage.encryptedAESKey,
+            iv: encryptedPackage.iv,
+            created_at: new Date().toISOString()
+        };
 
         const { data: messageData, error: saveError } = await supabaseClient
             .from('messages')
