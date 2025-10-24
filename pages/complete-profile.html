@@ -169,9 +169,9 @@
                     <p>Almost there...</p>
                 `;
                 
-                const name = localStorage.getItem('pendingName');
-                const username = localStorage.getItem('pendingUsername');
-                const gender = localStorage.getItem('pendingGender');
+                let name = localStorage.getItem('pendingName');
+                let username = localStorage.getItem('pendingUsername');
+                let gender = localStorage.getItem('pendingGender');
                 const profilePicData = localStorage.getItem('pendingProfilePic');
                 const email = localStorage.getItem('pendingEmail');
                 
@@ -249,12 +249,28 @@
                 // Insert profile data with public key
                 console.log('✨ Creating NEW profile with data:', { 
                     userId: user.id,
+                    email: user.email,
                     name, 
                     username, 
                     gender, 
                     avatarUrl, 
                     publicKey: publicKeyBase64.substring(0, 30) + '...', 
-                    fingerprint 
+                    fingerprint,
+                    hasEncryptedPrivateKey: !!encryptedPrivateKey,
+                    hasPasswordHash: !!passwordHash
+                });
+                
+                console.log('Full insert object:', {
+                    id: user.id,
+                    email: user.email,
+                    name: name,
+                    username: username,
+                    gender: gender,
+                    avatar_url: avatarUrl,
+                    public_key: publicKeyBase64 ? publicKeyBase64.substring(0, 50) + '...' : 'MISSING',
+                    key_fingerprint: fingerprint || 'MISSING',
+                    encrypted_private_key: encryptedPrivateKey ? encryptedPrivateKey.substring(0, 50) + '...' : 'MISSING',
+                    password_hash: passwordHash ? passwordHash.substring(0, 50) + '...' : 'MISSING'
                 });
                 
                 // Attempt to create profile row. Use .select().single() to get the created row back.
@@ -283,7 +299,13 @@
                     throw new Error('Profile creation failed: ' + details);
                 }
 
-                console.log('Profile created successfully:', profileData);
+                console.log('✅ Profile created successfully:', profileData);
+                console.log('Verify stored fields:', {
+                    hasUsername: !!profileData.username,
+                    hasPublicKey: !!profileData.public_key,
+                    hasEncryptedPrivateKey: !!profileData.encrypted_private_key,
+                    hasPasswordHash: !!profileData.password_hash
+                });
                 }
                 
                 // Clear stored data
