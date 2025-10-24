@@ -32,6 +32,9 @@ class FileService {
                 encryptedFile.key
             );
             const encryptedKey = btoa(String.fromCharCode(...new Uint8Array(encryptedKeyBuffer)));
+            
+            // Convert IV to base64
+            const ivBase64 = btoa(String.fromCharCode(...encryptedFile.iv));
 
             // 3. Upload encrypted file to Supabase storage
             console.log('☁️ Uploading encrypted file to storage...');
@@ -75,7 +78,7 @@ class FileService {
                 file_type: file.type || 'application/octet-stream',
                 storage_path: fileName,
                 encrypted_key: encryptedKey,
-                iv: encryptedFile.iv,
+                iv: ivBase64,
                 vt_scan_id: vtScanId,
                 vt_status: vtStatus,
                 created_at: new Date().toISOString()
@@ -183,7 +186,10 @@ class FileService {
 
             console.log('✅ File downloaded');
 
-            // 2. Decrypt the AES key with private key
+            // 2. Convert encrypted blob to ArrayBuffer
+            const encryptedArrayBuffer = await fileBlob.arrayBuffer();
+
+            // 3. Decrypt the AES key with private key
             const encryptedKeyBuffer = Uint8Array.from(atob(fileRecord.encrypted_key), c => c.charCodeAt(0));
             const decryptedKeyBuffer = await crypto.subtle.decrypt(
                 { name: 'RSA-OAEP' },
@@ -191,16 +197,26 @@ class FileService {
                 encryptedKeyBuffer
             );
 
-            // 3. Decrypt the file
+            // 4. Import the decrypted AES key
             console.log('🔓 Decrypting file...');
-            const decryptedFile = await EncryptionService.decryptFile(
-                fileBlob,
+            const aesKey = await crypto.subtle.importKey(
+                'raw',
                 decryptedKeyBuffer,
-                fileRecord.iv
+                { name: 'AES-GCM' },
+                false,
+                ['decrypt']
             );
 
-            // 4. Create File object
-            const file = new File([decryptedFile], fileRecord.file_name, {
+            // 5. Decrypt the file with AES key
+            const ivBuffer = Uint8Array.from(atob(fileRecord.iv), c => c.charCodeAt(0));
+            const decryptedData = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: ivBuffer },
+                aesKey,
+                encryptedArrayBuffer
+            );
+
+            // 6. Create File object
+            const file = new File([decryptedData], fileRecord.file_name, {
                 type: fileRecord.file_type
             });
 

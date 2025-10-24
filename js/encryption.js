@@ -339,13 +339,15 @@ const EncryptionService = {
     },
 
     // Encrypt file (for file sharing)
-    async encryptFile(file, recipientPublicKey, onProgress = null) {
+    async encryptFile(file, onProgress = null) {
         try {
             // Read file as array buffer
             const fileBuffer = await file.arrayBuffer();
             
             // Generate AES key for this file
             const aesKey = await this.generateAESKey();
+            
+            if (onProgress) onProgress(25);
             
             // Encrypt file with AES
             const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -357,21 +359,21 @@ const EncryptionService = {
             
             if (onProgress) onProgress(50);
             
-            // Export and encrypt AES key with recipient's public key
+            // Export AES key as raw bytes
             const exportedAESKey = await window.crypto.subtle.exportKey('raw', aesKey);
-            const encryptedAESKey = await window.crypto.subtle.encrypt(
-                { name: "RSA-OAEP" },
-                recipientPublicKey,
-                exportedAESKey
-            );
+            
+            if (onProgress) onProgress(75);
+            
+            // Convert to Blob for upload
+            const encryptedBlob = new Blob([encryptedFile], { type: 'application/octet-stream' });
             
             if (onProgress) onProgress(100);
             
-            // Return encrypted package
+            // Return encrypted package with raw AES key (caller will encrypt this with recipient's public key)
             return {
-                encryptedAESKey: this.arrayBufferToBase64(encryptedAESKey),
-                iv: this.arrayBufferToBase64(iv),
-                encryptedData: encryptedFile, // Keep as ArrayBuffer for file upload
+                key: exportedAESKey, // Raw AES key as ArrayBuffer
+                iv: iv, // IV as Uint8Array
+                encryptedBlob: encryptedBlob, // Encrypted file as Blob
                 fileName: file.name,
                 fileType: file.type,
                 fileSize: file.size
