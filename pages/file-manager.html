@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Manager - Flowsec</title>
+    <link rel="stylesheet" href="../css/chat.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .file-manager-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .file-manager-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .file-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+        }
+        .file-table {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .file-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .file-table th {
+            background: #f5f5f5;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .file-table td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .file-table tr:hover {
+            background: #f9f9f9;
+        }
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .file-icon {
+            font-size: 24px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #e3f2fd;
+            border-radius: 8px;
+        }
+        .vt-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .vt-clean {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .vt-suspicious {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        .vt-malicious {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .vt-scanning {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .vt-pending {
+            background: #f5f5f5;
+            color: #757575;
+        }
+        .action-btn {
+            padding: 6px 12px;
+            margin: 0 4px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .download-btn {
+            background: #4CAF50;
+            color: white;
+        }
+        .download-btn:hover {
+            background: #45a049;
+        }
+        .view-report-btn {
+            background: #2196F3;
+            color: white;
+        }
+        .view-report-btn:hover {
+            background: #0b7dda;
+        }
+        .delete-btn {
+            background: #f44336;
+            color: white;
+        }
+        .delete-btn:hover {
+            background: #da190b;
+        }
+    </style>
+</head>
+<body>
+    <div class="file-manager-container">
+        <div class="file-manager-header">
+            <div>
+                <h1>📁 File Manager</h1>
+                <p>All files sent and received with VirusTotal analysis</p>
+            </div>
+            <a href="chat.html" class="action-btn download-btn">
+                <i class="fas fa-arrow-left"></i> Back to Chat
+            </a>
+        </div>
+
+        <div class="file-stats" id="file-stats">
+            <!-- Stats will be loaded here -->
+        </div>
+
+        <div class="file-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Size</th>
+                        <th>From/To</th>
+                        <th>Date</th>
+                        <th>VirusTotal</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="files-tbody">
+                    <!-- Files will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="../js/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <script src="../js/supabase-client.js"></script>
+    <script src="../js/encryption.js"></script>
+    <script src="../js/virustotal.js"></script>
+    <script src="../js/file-service.js"></script>
+    
+    <script>
+        let currentUser = null;
+        let privateKey = null;
+
+        async function init() {
+            try {
+                // Initialize VirusTotal service
+                virusTotalService = new VirusTotalService(VIRUSTOTAL_API_KEY);
+
+                // Get current user
+                const { data: { user }, error } = await supabaseClient.auth.getUser();
+                if (error || !user) {
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                // Get user profile
+                const { data: profile } = await supabaseClient
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single();
+
+                currentUser = profile;
+
+                // Load private key for decryption
+                await loadPrivateKey();
+
+                // Load files
+                await loadFiles();
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                alert('Failed to initialize file manager');
+            }
+        }
+
+        async function loadPrivateKey() {
+            try {
+                const password = sessionStorage.getItem('tempPassword') || currentUser.email;
+                
+                if (EncryptionService.hasPrivateKey(currentUser.id)) {
+                    privateKey = await EncryptionService.loadPrivateKey(currentUser.id, password);
+                } else if (currentUser.encrypted_private_key) {
+                    privateKey = await EncryptionService.decryptPrivateKeyFromBackup(
+                        currentUser.encrypted_private_key,
+                        password
+                    );
+                    await EncryptionService.storePrivateKey(privateKey, currentUser.id, password);
+                }
+            } catch (error) {
+                console.error('Failed to load private key:', error);
+            }
+        }
+
+        async function loadFiles() {
+            try {
+                const files = await fileService.getUserFiles(currentUser.id);
+                
+                displayStats(files);
+                displayFiles(files);
+            } catch (error) {
+                console.error('Failed to load files:', error);
+                document.getElementById('files-tbody').innerHTML = `
+                    <tr><td colspan="6" style="text-align: center; padding: 40px;">
+                        <p style="color: #999;">Failed to load files</p>
+                    </td></tr>
+                `;
+            }
+        }
+
+        function displayStats(files) {
+            const totalFiles = files.length;
+            const sentFiles = files.filter(f => f.sender_id === currentUser.id).length;
+            const receivedFiles = files.filter(f => f.receiver_id === currentUser.id).length;
+            const cleanFiles = files.filter(f => f.vt_status === 'completed' && f.vt_positives === 0).length;
+            const threatsDetected = files.filter(f => f.vt_positives > 0).length;
+            const totalSize = files.reduce((sum, f) => sum + f.file_size, 0);
+
+            document.getElementById('file-stats').innerHTML = `
+                <div class="stat-card">
+                    <h3>Total Files</h3>
+                    <div class="value">${totalFiles}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Sent / Received</h3>
+                    <div class="value" style="font-size: 20px;">${sentFiles} / ${receivedFiles}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Clean Files</h3>
+                    <div class="value" style="color: #4CAF50;">${cleanFiles}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Threats Detected</h3>
+                    <div class="value" style="color: ${threatsDetected > 0 ? '#f44336' : '#4CAF50'};">
+                        ${threatsDetected}
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Size</h3>
+                    <div class="value" style="font-size: 20px;">${fileService.formatFileSize(totalSize)}</div>
+                </div>
+            `;
+        }
+
+        function displayFiles(files) {
+            const tbody = document.getElementById('files-tbody');
+            
+            if (files.length === 0) {
+                tbody.innerHTML = `
+                    <tr><td colspan="6" style="text-align: center; padding: 40px;">
+                        <i class="fas fa-folder-open" style="font-size: 48px; color: #ddd; margin-bottom: 15px;"></i>
+                        <p style="color: #999;">No files yet</p>
+                    </td></tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = files.map(file => {
+                const isSent = file.sender_id === currentUser.id;
+                const otherUser = isSent ? file.receiver : file.sender;
+                const direction = isSent ? 'To' : 'From';
+                
+                const vtBadge = getVirusTotalBadge(file);
+                const fileIcon = getFileIcon(file.file_type);
+                
+                return `
+                    <tr>
+                        <td>
+                            <div class="file-info">
+                                <div class="file-icon">${fileIcon}</div>
+                                <div>
+                                    <div style="font-weight: 600;">${file.file_name}</div>
+                                    <div style="font-size: 12px; color: #999;">${file.file_type || 'Unknown type'}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${fileService.formatFileSize(file.file_size)}</td>
+                        <td>
+                            <div>${direction}: ${otherUser?.name || otherUser?.username || 'Unknown'}</div>
+                            <div style="font-size: 12px; color: #999;">@${otherUser?.username || 'unknown'}</div>
+                        </td>
+                        <td>${new Date(file.created_at).toLocaleString()}</td>
+                        <td>${vtBadge}</td>
+                        <td>
+                            ${!isSent ? `<button class="action-btn download-btn" onclick="downloadFile('${file.id}')">
+                                <i class="fas fa-download"></i> Download
+                            </button>` : ''}
+                            ${file.vt_permalink ? `<button class="action-btn view-report-btn" onclick="window.open('${file.vt_permalink}', '_blank')">
+                                <i class="fas fa-chart-bar"></i> Report
+                            </button>` : ''}
+                            ${isSent ? `<button class="action-btn delete-btn" onclick="deleteFile('${file.id}')">
+                                <i class="fas fa-trash"></i>
+                            </button>` : ''}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function getVirusTotalBadge(file) {
+            if (file.vt_status === 'pending') {
+                return '<span class="vt-badge vt-pending">⏳ Pending</span>';
+            } else if (file.vt_status === 'scanning') {
+                return '<span class="vt-badge vt-scanning">🔍 Scanning...</span>';
+            } else if (file.vt_status === 'completed') {
+                if (file.vt_positives === 0) {
+                    return `<span class="vt-badge vt-clean">✅ Clean (0/${file.vt_total})</span>`;
+                } else if (file.vt_positives < 5) {
+                    return `<span class="vt-badge vt-suspicious">⚠️ ${file.vt_threat_label} (${file.vt_positives}/${file.vt_total})</span>`;
+                } else {
+                    return `<span class="vt-badge vt-malicious">🚨 ${file.vt_threat_label} (${file.vt_positives}/${file.vt_total})</span>`;
+                }
+            } else {
+                return '<span class="vt-badge vt-pending">❌ Error</span>';
+            }
+        }
+
+        function getFileIcon(fileType) {
+            if (!fileType) return '📄';
+            if (fileType.startsWith('image/')) return '🖼️';
+            if (fileType.startsWith('video/')) return '🎥';
+            if (fileType.startsWith('audio/')) return '🎵';
+            if (fileType.includes('pdf')) return '📕';
+            if (fileType.includes('zip') || fileType.includes('rar')) return '📦';
+            if (fileType.includes('word') || fileType.includes('document')) return '📝';
+            if (fileType.includes('excel') || fileType.includes('spreadsheet')) return '📊';
+            return '📄';
+        }
+
+        async function downloadFile(fileId) {
+            try {
+                const files = await fileService.getUserFiles(currentUser.id);
+                const fileRecord = files.find(f => f.id === fileId);
+                
+                if (!fileRecord) {
+                    alert('File not found');
+                    return;
+                }
+
+                if (!privateKey) {
+                    alert('Cannot decrypt file - private key not available');
+                    return;
+                }
+
+                const file = await fileService.receiveFile(fileRecord, privateKey);
+                
+                // Create download link
+                const url = URL.createObjectURL(file);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file.name;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Download failed:', error);
+                alert('Failed to download file: ' + error.message);
+            }
+        }
+
+        async function deleteFile(fileId) {
+            if (!confirm('Are you sure you want to delete this file?')) return;
+
+            try {
+                const { error } = await supabaseClient
+                    .from('files')
+                    .delete()
+                    .eq('id', fileId);
+
+                if (error) throw error;
+
+                await loadFiles();
+            } catch (error) {
+                console.error('Delete failed:', error);
+                alert('Failed to delete file');
+            }
+        }
+
+        // Auto-refresh every 15 seconds to update scan statuses
+        setInterval(() => {
+            loadFiles();
+        }, 15000);
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

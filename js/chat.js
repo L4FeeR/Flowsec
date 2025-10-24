@@ -9,6 +9,14 @@ let privateKey = null; // Store decrypted private key in memory
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Chat dashboard initializing...');
     
+    // Initialize VirusTotal service
+    if (typeof VIRUSTOTAL_API_KEY !== 'undefined' && VIRUSTOTAL_API_KEY) {
+        virusTotalService = new VirusTotalService(VIRUSTOTAL_API_KEY);
+        console.log('✅ VirusTotal service initialized');
+    } else {
+        console.warn('⚠️ VirusTotal API key not configured');
+    }
+    
     // Load theme preference
     loadTheme();
     
@@ -635,6 +643,9 @@ async function loadMessages() {
         }
         
         console.log('✅ All messages loaded and decrypted');
+        
+        // Also load files shared with this user
+        await loadFilesForConversation();
         
     } catch (error) {
         console.error('❌ Error in loadMessages:', error);
@@ -1350,3 +1361,304 @@ Check console (F12) for detailed logs!
 
 // Make debugUsers available globally
 window.debugUsers = debugUsers;
+
+// File Upload Handling
+// =====================================================
+
+/**
+ * Load files shared in current conversation
+ */
+async function loadFilesForConversation() {
+    if (!selectedUser) return;
+    
+    try {
+        const { data: files, error } = await supabaseClient
+            .from('files')
+            .select('*')
+            .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedUser.id}),and(sender_id.eq.${selectedUser.id},receiver_id.eq.${currentUser.id})`)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('❌ Error loading files:', error);
+            return;
+        }
+
+        if (!files || files.length === 0) {
+            console.log('📁 No files in this conversation');
+            return;
+        }
+
+        console.log(`📁 Found ${files.length} files in conversation`);
+
+        // Display each file
+        for (const file of files) {
+            const isSent = file.sender_id === currentUser.id;
+            displayFileMessage(file, isSent);
+        }
+    } catch (error) {
+        console.error('❌ Error loading files:', error);
+    }
+}
+
+/**
+ * Handle file selection for sending
+ */
+async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+        console.log('📎 File selected:', file.name, fileService.formatFileSize(file.size));
+
+        if (!selectedUser) {
+            showError('Please select a user to send the file to');
+            event.target.value = '';
+            return;
+        }
+
+        if (!selectedUser.public_key) {
+            showError(`Cannot send file to ${selectedUser.name || selectedUser.username} - they need to complete their profile setup first.`);
+            event.target.value = '';
+            return;
+        }
+
+        if (!privateKey) {
+            showError('Cannot send file - your private key is not loaded');
+            event.target.value = '';
+            return;
+        }
+
+        // Show upload progress
+        showFileUploadProgress(file.name);
+
+        // Get recipient's public key
+        const recipientPubKey = await EncryptionService.importPublicKey(selectedUser.public_key);
+
+        // Send file (encrypt, upload, scan with VirusTotal)
+        const fileRecord = await fileService.sendFile(
+            file,
+            currentUser.id,
+            selectedUser.id,
+            recipientPubKey
+        );
+
+        console.log('✅ File sent successfully:', fileRecord);
+
+        // Display file message in chat
+        displayFileMessage(fileRecord, true);
+
+        // Clear file input
+        event.target.value = '';
+
+        // Hide progress
+        hideFileUploadProgress();
+
+        showSuccess(`File "${file.name}" sent successfully! VirusTotal scan in progress...`);
+    } catch (error) {
+        console.error('❌ File send failed:', error);
+        showError('Failed to send file: ' + error.message);
+        event.target.value = '';
+        hideFileUploadProgress();
+    }
+}
+
+/**
+ * Display file message in chat
+ */
+function displayFileMessage(fileRecord, isSent) {
+    const messagesArea = document.getElementById('messages-area');
+    if (!messagesArea) return;
+
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+
+    const vtBadge = getFileVirusTotalBadge(fileRecord);
+    const fileIcon = getFileIconForType(fileRecord.file_type);
+    const timestamp = new Date(fileRecord.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    messageDiv.innerHTML = `
+        <div class="message-content file-message">
+            <div class="file-attachment">
+                <div class="file-icon">${fileIcon}</div>
+                <div class="file-info">
+                    <div class="file-name">${fileRecord.file_name}</div>
+                    <div class="file-meta">
+                        <span>${fileService.formatFileSize(fileRecord.file_size)}</span>
+                        ${vtBadge}
+                    </div>
+                </div>
+                ${!isSent ? `
+                    <button class="file-download-btn" onclick="downloadFileFromChat('${fileRecord.id}')">
+                        <i class="fas fa-download"></i>
+                    </button>
+                ` : ''}
+            </div>
+            <div class="message-time">${timestamp}</div>
+        </div>
+    `;
+
+    messagesArea.appendChild(messageDiv);
+    messagesArea.scrollTop = messagesArea.scrollHeight;
+}
+
+/**
+ * Get VirusTotal badge HTML for file
+ */
+function getFileVirusTotalBadge(file) {
+    if (file.vt_status === 'pending' || file.vt_status === 'scanning') {
+        return '<span class="vt-mini-badge scanning">🔍 Scanning...</span>';
+    } else if (file.vt_status === 'completed') {
+        if (file.vt_positives === 0) {
+            return '<span class="vt-mini-badge clean">✅ Clean</span>';
+        } else if (file.vt_positives < 5) {
+            return `<span class="vt-mini-badge warning">⚠️ ${file.vt_positives} detections</span>`;
+        } else {
+            return `<span class="vt-mini-badge danger">🚨 ${file.vt_positives} threats</span>`;
+        }
+    }
+    return '';
+}
+
+/**
+ * Get file icon based on MIME type
+ */
+function getFileIconForType(mimeType) {
+    if (!mimeType) return '📄';
+    if (mimeType.startsWith('image/')) return '🖼️';
+    if (mimeType.startsWith('video/')) return '🎥';
+    if (mimeType.startsWith('audio/')) return '🎵';
+    if (mimeType.includes('pdf')) return '📕';
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return '📦';
+    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
+    if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
+    return '📄';
+}
+
+/**
+ * Download file from chat
+ */
+async function downloadFileFromChat(fileId) {
+    try {
+        console.log('📥 Downloading file:', fileId);
+
+        const { data: fileRecord, error } = await supabaseClient
+            .from('files')
+            .select('*')
+            .eq('id', fileId)
+            .single();
+
+        if (error || !fileRecord) {
+            throw new Error('File not found');
+        }
+
+        if (!privateKey) {
+            showError('Cannot decrypt file - private key not available');
+            return;
+        }
+
+        // Show download progress
+        showFileDownloadProgress(fileRecord.file_name);
+
+        // Decrypt and download
+        const file = await fileService.receiveFile(fileRecord, privateKey);
+
+        // Create download link
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        hideFileDownloadProgress();
+        showSuccess(`File "${file.name}" downloaded successfully!`);
+    } catch (error) {
+        console.error('❌ File download failed:', error);
+        showError('Failed to download file: ' + error.message);
+        hideFileDownloadProgress();
+    }
+}
+
+// Global function for onclick handlers
+window.downloadFileFromChat = downloadFileFromChat;
+
+/**
+ * Show file upload progress
+ */
+function showFileUploadProgress(fileName) {
+    const messagesArea = document.getElementById('messages-area');
+    const progressDiv = document.createElement('div');
+    progressDiv.id = 'file-upload-progress';
+    progressDiv.className = 'message sent';
+    progressDiv.innerHTML = `
+        <div class="message-content">
+            <div class="upload-progress">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span>Uploading ${fileName}...</span>
+            </div>
+        </div>
+    `;
+    messagesArea.appendChild(progressDiv);
+    messagesArea.scrollTop = messagesArea.scrollHeight;
+}
+
+/**
+ * Hide file upload progress
+ */
+function hideFileUploadProgress() {
+    const progressDiv = document.getElementById('file-upload-progress');
+    if (progressDiv) {
+        progressDiv.remove();
+    }
+}
+
+/**
+ * Show file download progress
+ */
+function showFileDownloadProgress(fileName) {
+    showNotification(`Downloading ${fileName}...`, 'info');
+}
+
+/**
+ * Hide file download progress
+ */
+function hideFileDownloadProgress() {
+    // Progress notifications auto-hide
+}
+
+/**
+ * Show notification helper
+ */
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3'};
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+    `;
+
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+function showSuccess(message) {
+    showNotification(message, 'success');
+}
+
+function showError(message) {
+    showNotification(message, 'error');
+}

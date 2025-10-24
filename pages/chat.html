@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat - Flowsec</title>
     <link rel="stylesheet" href="../css/chat.css">
+    <link rel="stylesheet" href="../css/file-messages.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,6 +23,9 @@
                     <span>Flowsec</span>
                 </div>
                 <div style="display: flex; gap: 8px;">
+                    <button class="btn-icon" id="files-btn" title="File Manager" onclick="window.location.href='file-manager.html'">
+                        <i class="fas fa-folder-open"></i>
+                    </button>
                     <button class="btn-icon" id="theme-toggle" title="Toggle Dark Mode">
                         <i class="fas fa-moon"></i>
                     </button>
@@ -235,10 +239,15 @@
         </div>
     </div>
 
-    <script src="../js/config.js"></script>
+        <script src="../js/config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
     <script src="../js/supabase-client.js"></script>
     <script src="../js/encryption.js"></script>
+    <script src="../js/virustotal.js"></script>
+    <script src="../js/file-service.js"></script>
     <script src="../js/chat.js"></script>
+</body>
+</html>
+```
 </body>
 </html>

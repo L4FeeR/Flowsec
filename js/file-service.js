@@ -1,0 +1,254 @@
+// File Sharing Service with E2EE and VirusTotal Integration
+class FileService {
+    constructor() {
+        this.maxFileSize = 100 * 1024 * 1024; // 100MB limit
+    }
+
+    /**
+     * Encrypt and upload a file to storage, then scan with VirusTotal
+     * @param {File} file - The file to upload
+     * @param {string} senderId - Sender user ID
+     * @param {string} receiverId - Receiver user ID
+     * @param {CryptoKey} recipientPublicKey - Recipient's RSA public key
+     * @returns {Promise<Object>} File metadata and scan info
+     */
+    async sendFile(file, senderId, receiverId, recipientPublicKey) {
+        try {
+            console.log('📤 Starting file send process:', file.name);
+
+            // Validate file size
+            if (file.size > this.maxFileSize) {
+                throw new Error(`File too large. Maximum size is ${this.maxFileSize / 1024 / 1024}MB`);
+            }
+
+            // 1. Encrypt the file with AES-GCM
+            console.log('🔐 Encrypting file...');
+            const encryptedFile = await EncryptionService.encryptFile(file);
+
+            // 2. Encrypt the AES key with recipient's public key
+            const encryptedKeyBuffer = await crypto.subtle.encrypt(
+                { name: 'RSA-OAEP' },
+                recipientPublicKey,
+                encryptedFile.key
+            );
+            const encryptedKey = btoa(String.fromCharCode(...new Uint8Array(encryptedKeyBuffer)));
+
+            // 3. Upload encrypted file to Supabase storage
+            console.log('☁️ Uploading encrypted file to storage...');
+            const fileName = `${senderId}/${Date.now()}-${file.name}.encrypted`;
+            
+            const { data: uploadData, error: uploadError } = await supabaseClient.storage
+                .from('encrypted-files')
+                .upload(fileName, encryptedFile.encryptedBlob, {
+                    contentType: 'application/octet-stream'
+                });
+
+            if (uploadError) {
+                console.error('❌ File upload failed:', uploadError);
+                throw uploadError;
+            }
+
+            console.log('✅ File uploaded:', fileName);
+
+            // 4. Initiate VirusTotal scan on ORIGINAL file (before encryption)
+            console.log('🦠 Initiating VirusTotal scan...');
+            let vtScanId = null;
+            let vtStatus = 'pending';
+            
+            try {
+                const scanResult = await virusTotalService.scanFile(file);
+                vtScanId = scanResult.scanId;
+                vtStatus = 'scanning';
+                console.log('✅ VirusTotal scan initiated:', vtScanId);
+            } catch (vtError) {
+                console.error('⚠️ VirusTotal scan failed:', vtError);
+                vtStatus = 'error';
+            }
+
+            // 5. Save file metadata to database
+            console.log('💾 Saving file metadata to database...');
+            const fileMetadata = {
+                sender_id: senderId,
+                receiver_id: receiverId,
+                file_name: file.name,
+                file_size: file.size,
+                file_type: file.type || 'application/octet-stream',
+                storage_path: fileName,
+                encrypted_key: encryptedKey,
+                iv: encryptedFile.iv,
+                vt_scan_id: vtScanId,
+                vt_status: vtStatus,
+                created_at: new Date().toISOString()
+            };
+
+            const { data: fileRecord, error: dbError } = await supabaseClient
+                .from('files')
+                .insert(fileMetadata)
+                .select()
+                .single();
+
+            if (dbError) {
+                console.error('❌ Database save failed:', dbError);
+                // Clean up uploaded file
+                await supabaseClient.storage.from('encrypted-files').remove([fileName]);
+                throw dbError;
+            }
+
+            console.log('✅ File metadata saved:', fileRecord);
+
+            // 6. Poll VirusTotal for results (async, don't block)
+            if (vtScanId) {
+                this.pollVirusTotalResults(fileRecord.id, vtScanId);
+            }
+
+            return fileRecord;
+        } catch (error) {
+            console.error('❌ File send failed:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Poll VirusTotal for scan results and update database
+     * @param {string} fileId - Database file record ID
+     * @param {string} scanId - VirusTotal scan ID
+     */
+    async pollVirusTotalResults(fileId, scanId) {
+        const maxAttempts = 20;
+        const pollInterval = 10000; // 10 seconds
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+            try {
+                console.log(`🔍 Polling VirusTotal (attempt ${attempt + 1}/${maxAttempts})...`);
+                
+                const analysis = await virusTotalService.getAnalysis(scanId);
+                
+                if (analysis.status === 'completed') {
+                    console.log('✅ VirusTotal scan completed:', analysis);
+                    
+                    const threatInfo = virusTotalService.parseThreatInfo(analysis);
+                    
+                    // Update database with results
+                    const { error: updateError } = await supabaseClient
+                        .from('files')
+                        .update({
+                            vt_status: 'completed',
+                            vt_positives: threatInfo.positives,
+                            vt_total: threatInfo.total,
+                            vt_permalink: analysis.permalink,
+                            vt_scan_date: new Date(analysis.scanDate * 1000).toISOString(),
+                            vt_threat_label: threatInfo.threatLabel,
+                            vt_raw_response: analysis.stats,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', fileId);
+
+                    if (updateError) {
+                        console.error('❌ Failed to update VT results:', updateError);
+                    } else {
+                        console.log('✅ VirusTotal results saved to database');
+                    }
+                    
+                    return;
+                }
+            } catch (error) {
+                console.error('⚠️ VirusTotal polling error:', error);
+            }
+        }
+
+        console.warn('⏰ VirusTotal scan timeout - results will be available later');
+    }
+
+    /**
+     * Download and decrypt a file
+     * @param {Object} fileRecord - File metadata from database
+     * @param {CryptoKey} privateKey - User's RSA private key
+     * @returns {Promise<File>} Decrypted file
+     */
+    async receiveFile(fileRecord, privateKey) {
+        try {
+            console.log('📥 Downloading file:', fileRecord.file_name);
+
+            // 1. Download encrypted file from storage
+            const { data: fileBlob, error: downloadError } = await supabaseClient.storage
+                .from('encrypted-files')
+                .download(fileRecord.storage_path);
+
+            if (downloadError) {
+                console.error('❌ File download failed:', downloadError);
+                throw downloadError;
+            }
+
+            console.log('✅ File downloaded');
+
+            // 2. Decrypt the AES key with private key
+            const encryptedKeyBuffer = Uint8Array.from(atob(fileRecord.encrypted_key), c => c.charCodeAt(0));
+            const decryptedKeyBuffer = await crypto.subtle.decrypt(
+                { name: 'RSA-OAEP' },
+                privateKey,
+                encryptedKeyBuffer
+            );
+
+            // 3. Decrypt the file
+            console.log('🔓 Decrypting file...');
+            const decryptedFile = await EncryptionService.decryptFile(
+                fileBlob,
+                decryptedKeyBuffer,
+                fileRecord.iv
+            );
+
+            // 4. Create File object
+            const file = new File([decryptedFile], fileRecord.file_name, {
+                type: fileRecord.file_type
+            });
+
+            console.log('✅ File decrypted successfully');
+            return file;
+        } catch (error) {
+            console.error('❌ File receive failed:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get all files for current user (sent or received)
+     * @param {string} userId - Current user ID
+     * @returns {Promise<Array>} List of file records
+     */
+    async getUserFiles(userId) {
+        const { data, error } = await supabaseClient
+            .from('files')
+            .select(`
+                *,
+                sender:sender_id(id, name, username, avatar_url),
+                receiver:receiver_id(id, name, username, avatar_url)
+            `)
+            .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('❌ Failed to fetch files:', error);
+            throw error;
+        }
+
+        return data || [];
+    }
+
+    /**
+     * Format file size for display
+     * @param {number} bytes - File size in bytes
+     * @returns {string} Formatted size
+     */
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+}
+
+// Global instance
+const fileService = new FileService();
