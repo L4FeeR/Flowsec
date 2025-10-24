@@ -243,6 +243,7 @@
                     fingerprint 
                 });
                 
+                // Attempt to create profile row. Use .select().single() to get the created row back.
                 const { data: profileData, error: profileError } = await supabaseClient
                     .from('profiles')
                     .insert({
@@ -254,14 +255,21 @@
                         avatar_url: avatarUrl,
                         public_key: publicKeyBase64,
                         key_fingerprint: fingerprint,
-                            encrypted_private_key: encryptedPrivateKey,
-                            password_hash: passwordHash
+                        encrypted_private_key: encryptedPrivateKey,
+                        password_hash: passwordHash
                     })
-                    .select();                    if (profileError) {
-                        throw new Error('Profile creation failed: ' + profileError.message);
-                    }
-                    
-                    console.log('Profile created successfully:', profileData);
+                    .select()
+                    .single();
+
+                if (profileError) {
+                    // Log full error for debugging and show details in the UI
+                    console.error('❌ Profile creation failed', profileError);
+                    // Provide more context in the thrown error so dev can see DB details
+                    const details = profileError.details || profileError.message || JSON.stringify(profileError);
+                    throw new Error('Profile creation failed: ' + details);
+                }
+
+                console.log('Profile created successfully:', profileData);
                 }
                 
                 // Clear stored data
