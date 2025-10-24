@@ -1,0 +1,82 @@
+/* Account Switcher Styles */
+.account-switcher {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  background: var(--bg-primary, #1a1a2e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.current-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+}
+
+.current-account button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 5px;
+  transition: transform 0.2s;
+}
+
+.current-account button:hover {
+  transform: scale(1.1);
+}
+
+.account-menu {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color, #444);
+}
+
+.account-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.account-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--text-secondary, #ccc);
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.account-item:hover {
+  background: var(--hover-bg, #2a2a3e);
+}
+
+.account-item.active {
+  background: var(--accent-color, #4a90e2);
+  color: #fff;
+  font-weight: bold;
+}
+
+.account-menu button {
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 5px;
+  border: 1px solid var(--border-color, #444);
+  background: var(--bg-secondary, #16213e);
+  color: var(--text-primary, #fff);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.account-menu button:hover {
+  background: var(--hover-bg, #2a2a3e);
+  border-color: var(--accent-color, #4a90e2);
+}
