@@ -614,7 +614,12 @@ async function loadMessages() {
                         } catch (e) {
                             console.error('❌ Failed to decrypt message locally:', e);
                             if (isSentByMe) {
-                                decryptedText = '[Sent message - encryption not supported on this device]';
+                                // Check if it's due to missing sender encryption column
+                                if (!msg.encrypted_aes_key_sender) {
+                                    decryptedText = '[Old message - sent before dual encryption was enabled. Run database migration to see future sent messages.]';
+                                } else {
+                                    decryptedText = '[Sent message - decryption failed]';
+                                }
                             } else {
                                 decryptedText = '[Failed to decrypt message]';
                             }
