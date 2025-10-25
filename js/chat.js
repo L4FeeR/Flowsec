@@ -578,31 +578,46 @@ async function loadMessages() {
                 let decryptedText;
                 const isSentByMe = msg.sender_id === currentUser.id;
                 
-                // Check cache first for sent messages
+                // Check cache first for sent messages (current session only)
                 if (isSentByMe && window.sentMessagesCache && window.sentMessagesCache[msg.id]) {
                     decryptedText = window.sentMessagesCache[msg.id];
                     console.log('📝 Retrieved sent message from cache');
                 }
                 // Decrypt E2EE message locally using the user's private key
-                else if (msg.encrypted_content && msg.encrypted_aes_key && msg.iv) {
-                    // If this is a message I sent, I can't decrypt it (encrypted with recipient's key)
-                    if (isSentByMe) {
-                        decryptedText = '[Message sent - content not available]';
-                        console.log('📤 Cannot decrypt sent message (encrypted with recipient\'s key)');
-                    } else if (!privateKey) {
+                else if (msg.encrypted_content && msg.iv) {
+                    if (!privateKey) {
                         console.warn('🔒 Private key not loaded; cannot decrypt message');
                         decryptedText = '[Encrypted message — keys not loaded]';
                     } else {
                         try {
+                            // Choose the correct encrypted AES key
+                            let encryptedAESKey;
+                            if (isSentByMe && msg.encrypted_aes_key_sender) {
+                                // Sent message: use sender's encrypted key
+                                encryptedAESKey = msg.encrypted_aes_key_sender;
+                                console.log('🔓 Decrypting sent message with sender key');
+                            } else if (!isSentByMe && msg.encrypted_aes_key) {
+                                // Received message: use recipient's encrypted key
+                                encryptedAESKey = msg.encrypted_aes_key;
+                                console.log('🔓 Decrypting received message with recipient key');
+                            } else {
+                                // No appropriate key available
+                                throw new Error('No encrypted AES key available');
+                            }
+
                             const packageObj = {
-                                encryptedAESKey: msg.encrypted_aes_key,
+                                encryptedAESKey: encryptedAESKey,
                                 iv: msg.iv,
                                 encryptedData: msg.encrypted_content
                             };
                             decryptedText = await EncryptionService.decryptMessage(packageObj, privateKey);
                         } catch (e) {
                             console.error('❌ Failed to decrypt message locally:', e);
-                            decryptedText = '[Failed to decrypt message]';
+                            if (isSentByMe) {
+                                decryptedText = '[Sent message - encryption not supported on this device]';
+                            } else {
+                                decryptedText = '[Failed to decrypt message]';
+                            }
                         }
                     }
                 } else if (msg.app_ciphertext && msg.app_iv) {
@@ -703,15 +718,27 @@ async function sendMessage() {
             return;
         }
 
-        // Import recipient public key and encrypt
+        // Import recipient public key and sender's own public key
         const recipientPub = await EncryptionService.importPublicKey(selectedUser.public_key);
-        const encryptedPackage = await EncryptionService.encryptMessage(message, recipientPub);
+        
+        // Dual encryption: encrypt message for both sender and recipient
+        let encryptedPackage;
+        if (currentUser.public_key) {
+            const senderPub = await EncryptionService.importPublicKey(currentUser.public_key);
+            encryptedPackage = await EncryptionService.encryptMessageDual(message, recipientPub, senderPub);
+            console.log('🔐 Message encrypted for both sender and recipient');
+        } else {
+            // Fallback: encrypt only for recipient
+            encryptedPackage = await EncryptionService.encryptMessage(message, recipientPub);
+            console.warn('⚠️ Sender has no public key - message encrypted only for recipient');
+        }
 
         const messagePayload = {
             sender_id: currentUser.id,
             receiver_id: selectedUser.id,
             encrypted_content: encryptedPackage.encryptedData,
             encrypted_aes_key: encryptedPackage.encryptedAESKey,
+            encrypted_aes_key_sender: encryptedPackage.encryptedAESKeySender || null,
             iv: encryptedPackage.iv,
             created_at: new Date().toISOString()
         };

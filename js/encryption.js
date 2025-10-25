@@ -291,10 +291,56 @@ const EncryptionService = {
             return {
                 encryptedAESKey: this.arrayBufferToBase64(encryptedAESKey),
                 iv: this.arrayBufferToBase64(iv),
-                encryptedData: this.arrayBufferToBase64(encryptedMessage)
+                encryptedData: this.arrayBufferToBase64(encryptedMessage),
+                aesKey: exportedAESKey // Return raw AES key for dual encryption
             };
         } catch (error) {
             console.error('❌ Error encrypting message:', error);
+            throw error;
+        }
+    },
+
+    // Encrypt message with dual keys (for both sender and recipient)
+    async encryptMessageDual(message, recipientPublicKey, senderPublicKey) {
+        try {
+            // 1. Generate random AES key for this message
+            const aesKey = await this.generateAESKey();
+            
+            // 2. Encrypt message with AES
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const encodedMessage = new TextEncoder().encode(message);
+            const encryptedMessage = await window.crypto.subtle.encrypt(
+                { name: "AES-GCM", iv: iv },
+                aesKey,
+                encodedMessage
+            );
+            
+            // 3. Export AES key
+            const exportedAESKey = await window.crypto.subtle.exportKey('raw', aesKey);
+            
+            // 4. Encrypt AES key with recipient's RSA public key
+            const encryptedAESKeyRecipient = await window.crypto.subtle.encrypt(
+                { name: "RSA-OAEP" },
+                recipientPublicKey,
+                exportedAESKey
+            );
+            
+            // 5. Encrypt same AES key with sender's RSA public key
+            const encryptedAESKeySender = await window.crypto.subtle.encrypt(
+                { name: "RSA-OAEP" },
+                senderPublicKey,
+                exportedAESKey
+            );
+            
+            // 6. Return both encrypted keys with the encrypted content
+            return {
+                encryptedAESKey: this.arrayBufferToBase64(encryptedAESKeyRecipient),
+                encryptedAESKeySender: this.arrayBufferToBase64(encryptedAESKeySender),
+                iv: this.arrayBufferToBase64(iv),
+                encryptedData: this.arrayBufferToBase64(encryptedMessage)
+            };
+        } catch (error) {
+            console.error('❌ Error encrypting message with dual keys:', error);
             throw error;
         }
     },
