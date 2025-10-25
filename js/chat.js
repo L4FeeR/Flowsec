@@ -587,7 +587,7 @@ async function loadMessages() {
                 else if (msg.encrypted_content && msg.iv) {
                     if (!privateKey) {
                         console.warn('🔒 Private key not loaded; cannot decrypt message');
-                        decryptedText = '[Encrypted message — keys not loaded]';
+                        decryptedText = '[🔐 Click "Generate Keys" button below to decrypt messages]';
                     } else {
                         try {
                             // Choose the correct encrypted AES key
@@ -1634,6 +1634,7 @@ async function downloadFileFromChat(fileId) {
 
 // Global function for onclick handlers
 window.downloadFileFromChat = downloadFileFromChat;
+window.regenerateKeys = regenerateKeys;
 
 /**
  * Show file upload progress
