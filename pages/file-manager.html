@@ -349,7 +349,7 @@
                         <td>${new Date(file.created_at).toLocaleString()}</td>
                         <td>${vtBadge}</td>
                         <td>
-                            <button class="action-btn download-btn" onclick="downloadFile('${file.id}')" title="Download file">
+                            <button class="action-btn download-btn" onclick="downloadFile('${file.id}', this)" title="Download file">
                                 <i class="fas fa-download"></i> Download
                             </button>
                             ${file.vt_permalink ? `<button class="action-btn view-report-btn" onclick="window.open('${file.vt_permalink}', '_blank')" title="View VirusTotal report">
@@ -398,7 +398,8 @@
             return '📄';
         }
 
-        async function downloadFile(fileId) {
+        async function downloadFile(fileId, btnElement) {
+            let downloadBtn = btnElement;
             try {
                 console.log('📥 Downloading file:', fileId);
                 
@@ -416,10 +417,10 @@
                 }
 
                 // Show loading indicator
-                const downloadBtn = event.target.closest('button');
-                const originalHTML = downloadBtn.innerHTML;
-                downloadBtn.disabled = true;
-                downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+                if (downloadBtn) {
+                    downloadBtn.disabled = true;
+                    downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+                }
 
                 const file = await fileService.receiveFile(fileRecord, privateKey);
                 
@@ -428,12 +429,16 @@
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = file.name;
+                document.body.appendChild(a);
                 a.click();
+                document.body.removeChild(a);
                 URL.revokeObjectURL(url);
 
                 // Reset button
-                downloadBtn.disabled = false;
-                downloadBtn.innerHTML = originalHTML;
+                if (downloadBtn) {
+                    downloadBtn.disabled = false;
+                    downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+                }
 
                 // Show success message
                 const successMsg = document.createElement('div');
@@ -449,11 +454,10 @@
                 alert('Failed to download file: ' + error.message);
                 
                 // Reset button on error
-                try {
-                    const downloadBtn = event.target.closest('button');
+                if (downloadBtn) {
                     downloadBtn.disabled = false;
                     downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download';
-                } catch (e) {}
+                }
             }
         }
 
