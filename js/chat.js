@@ -576,10 +576,20 @@ async function loadMessages() {
         for (const msg of messages) {
             try {
                 let decryptedText;
+                const isSentByMe = msg.sender_id === currentUser.id;
                 
+                // Check cache first for sent messages
+                if (isSentByMe && window.sentMessagesCache && window.sentMessagesCache[msg.id]) {
+                    decryptedText = window.sentMessagesCache[msg.id];
+                    console.log('📝 Retrieved sent message from cache');
+                }
                 // Decrypt E2EE message locally using the user's private key
-                if (msg.encrypted_content && msg.encrypted_aes_key && msg.iv) {
-                    if (!privateKey) {
+                else if (msg.encrypted_content && msg.encrypted_aes_key && msg.iv) {
+                    // If this is a message I sent, I can't decrypt it (encrypted with recipient's key)
+                    if (isSentByMe) {
+                        decryptedText = '[Message sent - content not available]';
+                        console.log('📤 Cannot decrypt sent message (encrypted with recipient\'s key)');
+                    } else if (!privateKey) {
                         console.warn('🔒 Private key not loaded; cannot decrypt message');
                         decryptedText = '[Encrypted message — keys not loaded]';
                     } else {
@@ -618,7 +628,8 @@ async function loadMessages() {
                     text: decryptedText,
                     sender_id: msg.sender_id,
                     created_at: msg.created_at,
-                    encrypted: true
+                    encrypted: true,
+                    id: msg.id
                 });
                 
             } catch (decryptError) {
@@ -719,12 +730,18 @@ async function sendMessage() {
 
         console.log('✅ Message saved to database:', messageData);
 
+        // Cache the plaintext message locally for this session
+        const messageId = messageData.id;
+        if (!window.sentMessagesCache) window.sentMessagesCache = {};
+        window.sentMessagesCache[messageId] = message;
+
         // Display message immediately
         displayMessage({
             text: message,
             sender_id: currentUser.id,
             created_at: messageData.created_at,
-            encrypted: false
+            encrypted: false,
+            id: messageId
         });
 
         input.value = '';
