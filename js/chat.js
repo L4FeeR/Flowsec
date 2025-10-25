@@ -1479,11 +1479,9 @@ function displayFileMessage(fileRecord, isSent) {
                         ${vtBadge}
                     </div>
                 </div>
-                ${!isSent ? `
-                    <button class="file-download-btn" onclick="downloadFileFromChat('${fileRecord.id}')">
-                        <i class="fas fa-download"></i>
-                    </button>
-                ` : ''}
+                <button class="file-download-btn" onclick="downloadFileFromChat('${fileRecord.id}')" title="Download file">
+                    <i class="fas fa-download"></i>
+                </button>
             </div>
             <div class="message-time">${timestamp}</div>
         </div>
@@ -1535,6 +1533,13 @@ async function downloadFileFromChat(fileId) {
     try {
         console.log('📥 Downloading file:', fileId);
 
+        // Show loading on button
+        const allDownloadBtns = document.querySelectorAll(`[onclick*="${fileId}"]`);
+        allDownloadBtns.forEach(btn => {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        });
+
         const { data: fileRecord, error } = await supabaseClient
             .from('files')
             .select('*')
@@ -1546,12 +1551,9 @@ async function downloadFileFromChat(fileId) {
         }
 
         if (!privateKey) {
-            showError('Cannot decrypt file - private key not available');
+            showError('Cannot decrypt file - private key not available. Please refresh and login again.');
             return;
         }
-
-        // Show download progress
-        showFileDownloadProgress(fileRecord.file_name);
 
         // Decrypt and download
         const file = await fileService.receiveFile(fileRecord, privateKey);
@@ -1561,15 +1563,28 @@ async function downloadFileFromChat(fileId) {
         const a = document.createElement('a');
         a.href = url;
         a.download = file.name;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        hideFileDownloadProgress();
+        // Reset buttons
+        allDownloadBtns.forEach(btn => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-download"></i>';
+        });
+
         showSuccess(`File "${file.name}" downloaded successfully!`);
     } catch (error) {
         console.error('❌ File download failed:', error);
         showError('Failed to download file: ' + error.message);
-        hideFileDownloadProgress();
+        
+        // Reset buttons on error
+        const allDownloadBtns = document.querySelectorAll(`[onclick*="${fileId}"]`);
+        allDownloadBtns.forEach(btn => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-download"></i>';
+        });
     }
 }
 

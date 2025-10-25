@@ -137,6 +137,30 @@
         .delete-btn:hover {
             background: #da190b;
         }
+        .action-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -325,14 +349,14 @@
                         <td>${new Date(file.created_at).toLocaleString()}</td>
                         <td>${vtBadge}</td>
                         <td>
-                            ${!isSent ? `<button class="action-btn download-btn" onclick="downloadFile('${file.id}')">
+                            <button class="action-btn download-btn" onclick="downloadFile('${file.id}')" title="Download file">
                                 <i class="fas fa-download"></i> Download
-                            </button>` : ''}
-                            ${file.vt_permalink ? `<button class="action-btn view-report-btn" onclick="window.open('${file.vt_permalink}', '_blank')">
+                            </button>
+                            ${file.vt_permalink ? `<button class="action-btn view-report-btn" onclick="window.open('${file.vt_permalink}', '_blank')" title="View VirusTotal report">
                                 <i class="fas fa-chart-bar"></i> Report
                             </button>` : ''}
-                            ${isSent ? `<button class="action-btn delete-btn" onclick="deleteFile('${file.id}')">
-                                <i class="fas fa-trash"></i>
+                            ${isSent ? `<button class="action-btn delete-btn" onclick="deleteFile('${file.id}')" title="Delete file">
+                                <i class="fas fa-trash"></i> Delete
                             </button>` : ''}
                         </td>
                     </tr>
@@ -376,6 +400,8 @@
 
         async function downloadFile(fileId) {
             try {
+                console.log('📥 Downloading file:', fileId);
+                
                 const files = await fileService.getUserFiles(currentUser.id);
                 const fileRecord = files.find(f => f.id === fileId);
                 
@@ -385,9 +411,15 @@
                 }
 
                 if (!privateKey) {
-                    alert('Cannot decrypt file - private key not available');
+                    alert('Cannot decrypt file - private key not available. Please refresh and login again.');
                     return;
                 }
+
+                // Show loading indicator
+                const downloadBtn = event.target.closest('button');
+                const originalHTML = downloadBtn.innerHTML;
+                downloadBtn.disabled = true;
+                downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
 
                 const file = await fileService.receiveFile(fileRecord, privateKey);
                 
@@ -398,9 +430,30 @@
                 a.download = file.name;
                 a.click();
                 URL.revokeObjectURL(url);
+
+                // Reset button
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = originalHTML;
+
+                // Show success message
+                const successMsg = document.createElement('div');
+                successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #4CAF50; color: white; padding: 15px 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10000; animation: slideIn 0.3s ease;';
+                successMsg.innerHTML = `<i class="fas fa-check-circle"></i> File "${file.name}" downloaded successfully!`;
+                document.body.appendChild(successMsg);
+                setTimeout(() => {
+                    successMsg.style.animation = 'slideOut 0.3s ease';
+                    setTimeout(() => successMsg.remove(), 300);
+                }, 3000);
             } catch (error) {
                 console.error('Download failed:', error);
                 alert('Failed to download file: ' + error.message);
+                
+                // Reset button on error
+                try {
+                    const downloadBtn = event.target.closest('button');
+                    downloadBtn.disabled = false;
+                    downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+                } catch (e) {}
             }
         }
 
