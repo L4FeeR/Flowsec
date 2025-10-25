@@ -377,10 +377,8 @@
                 } else {
                     return `<span class="vt-badge vt-malicious">🚨 ${file.vt_threat_label} (${file.vt_positives}/${file.vt_total})</span>`;
                 }
-            } else if (file.vt_status === 'skipped') {
-                return '<span class="vt-badge vt-pending" title="VirusTotal scanning requires backend proxy">⊘ Not Scanned</span>';
-            } else if (file.vt_status === 'error') {
-                return '<span class="vt-badge vt-pending">❌ Error</span>';
+            } else if (file.vt_status === 'skipped' || file.vt_status === 'error' || !file.vt_status) {
+                return '<span class="vt-badge vt-pending" title="VirusTotal requires backend API - not available in frontend-only app">⊘ Scan Unavailable</span>';
             } else {
                 return '<span class="vt-badge vt-pending">⊘ Unknown</span>';
             }

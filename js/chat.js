@@ -1554,8 +1554,8 @@ function getFileVirusTotalBadge(file) {
         } else {
             return `<span class="vt-mini-badge danger">🚨 ${file.vt_positives} threats</span>`;
         }
-    } else if (file.vt_status === 'skipped') {
-        return '<span class="vt-mini-badge" style="background: #666;">⊘ Not Scanned</span>';
+    } else if (file.vt_status === 'skipped' || file.vt_status === 'error' || !file.vt_status) {
+        return '<span class="vt-mini-badge" style="background: #666;" title="VirusTotal unavailable in frontend-only app">⊘ Scan N/A</span>';
     }
     return '';
 }
