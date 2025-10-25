@@ -57,10 +57,12 @@ class FileService {
             console.log('🦠 Initiating VirusTotal scan...');
             let vtScanId = null;
             let vtStatus = 'pending';
+            let vtErrorMessage = null;
             
             if (!virusTotalService) {
                 console.warn('⚠️ VirusTotal service not available - skipping scan');
-                vtStatus = 'error';
+                vtStatus = 'skipped';
+                vtErrorMessage = 'VirusTotal service not initialized';
             } else {
                 try {
                     const scanResult = await virusTotalService.scanFile(file);
@@ -69,7 +71,14 @@ class FileService {
                     console.log('✅ VirusTotal scan initiated:', vtScanId);
                 } catch (vtError) {
                     console.error('⚠️ VirusTotal scan failed:', vtError);
-                    vtStatus = 'error';
+                    vtStatus = 'skipped';
+                    vtErrorMessage = vtError.message;
+                    
+                    // Log CORS issue specifically
+                    if (vtError.message.includes('CORS')) {
+                        console.warn('💡 VirusTotal scanning requires a backend proxy. Files will be uploaded without virus scanning.');
+                        console.warn('💡 Consider implementing a backend API endpoint to proxy VirusTotal requests.');
+                    }
                 }
             }
 

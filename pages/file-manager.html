@@ -222,7 +222,7 @@
                 const password = sessionStorage.getItem('tempPassword') || currentUser.email;
                 
                 if (EncryptionService.hasPrivateKey(currentUser.id)) {
-                    privateKey = await EncryptionService.loadPrivateKey(currentUser.id, password);
+                    privateKey = await EncryptionService.retrievePrivateKey(currentUser.id, password);
                 } else if (currentUser.encrypted_private_key) {
                     privateKey = await EncryptionService.decryptPrivateKeyFromBackup(
                         currentUser.encrypted_private_key,
@@ -353,8 +353,12 @@
                 } else {
                     return `<span class="vt-badge vt-malicious">🚨 ${file.vt_threat_label} (${file.vt_positives}/${file.vt_total})</span>`;
                 }
-            } else {
+            } else if (file.vt_status === 'skipped') {
+                return '<span class="vt-badge vt-pending" title="VirusTotal scanning requires backend proxy">⊘ Not Scanned</span>';
+            } else if (file.vt_status === 'error') {
                 return '<span class="vt-badge vt-pending">❌ Error</span>';
+            } else {
+                return '<span class="vt-badge vt-pending">⊘ Unknown</span>';
             }
         }
 

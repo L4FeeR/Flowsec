@@ -1507,6 +1507,8 @@ function getFileVirusTotalBadge(file) {
         } else {
             return `<span class="vt-mini-badge danger">🚨 ${file.vt_positives} threats</span>`;
         }
+    } else if (file.vt_status === 'skipped') {
+        return '<span class="vt-mini-badge" style="background: #666;">⊘ Not Scanned</span>';
     }
     return '';
 }

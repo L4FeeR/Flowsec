@@ -26,8 +26,15 @@ class VirusTotalService {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(`VirusTotal API error: ${error.error?.message || response.statusText}`);
+                const errorText = await response.text();
+                let errorMsg;
+                try {
+                    const error = JSON.parse(errorText);
+                    errorMsg = error.error?.message || response.statusText;
+                } catch {
+                    errorMsg = response.statusText;
+                }
+                throw new Error(`VirusTotal API error (${response.status}): ${errorMsg}`);
             }
 
             const result = await response.json();
@@ -39,6 +46,12 @@ class VirusTotalService {
             };
         } catch (error) {
             console.error('❌ VirusTotal scan failed:', error);
+            
+            // Check if it's a CORS error
+            if (error.message.includes('CORS') || error.name === 'TypeError') {
+                throw new Error('VirusTotal scanning requires a backend proxy due to CORS restrictions. File uploaded without virus scan.');
+            }
+            
             throw error;
         }
     }
