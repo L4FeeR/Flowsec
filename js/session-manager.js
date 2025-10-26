@@ -45,7 +45,7 @@ class SessionManager {
     }
 
     /**
-     * Create a new session record
+     * Create a new session record or reuse existing one
      */
     async createSession() {
         try {
@@ -58,6 +58,34 @@ class SessionManager {
 
             const tokenHash = await this.hashToken(session.access_token);
             const deviceInfo = this.getDeviceInfo();
+
+            // Check if session already exists for this token
+            const { data: existingSession } = await supabaseClient
+                .from('sessions')
+                .select('*')
+                .eq('session_token_hash', tokenHash)
+                .is('revoked_at', null)
+                .single();
+
+            if (existingSession) {
+                // Session exists, just update it
+                this.currentSessionId = existingSession.id;
+                console.log('✅ Existing session found, reusing:', existingSession.id);
+                
+                // Mark as current and update activity
+                await supabaseClient
+                    .from('sessions')
+                    .update({ 
+                        is_current: true,
+                        last_active: new Date().toISOString()
+                    })
+                    .eq('id', existingSession.id);
+                
+                return existingSession;
+            }
+
+            // No existing session, create new one
+            console.log('📝 Creating new session...');
 
             // Mark all other sessions for this user as not current
             await supabaseClient
@@ -85,7 +113,7 @@ class SessionManager {
             }
 
             this.currentSessionId = data.id;
-            console.log('✅ Session created:', data.id);
+            console.log('✅ New session created:', data.id);
             return data;
         } catch (error) {
             console.error('❌ Error creating session:', error);
