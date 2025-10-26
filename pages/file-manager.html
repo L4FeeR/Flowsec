@@ -211,8 +211,8 @@
 
         async function init() {
             try {
-                // Initialize VirusTotal service
-                virusTotalService = new VirusTotalService(VIRUSTOTAL_API_KEY);
+                // Initialize VirusTotal service with Supabase URL (uses proxy)
+                virusTotalService = new VirusTotalService(SUPABASE_URL);
 
                 // Get current user
                 const { data: { user }, error } = await supabaseClient.auth.getUser();
@@ -243,19 +243,74 @@
 
         async function loadPrivateKey() {
             try {
-                const password = sessionStorage.getItem('tempPassword') || currentUser.email;
+                console.log('🔍 Loading private key for user:', currentUser.id);
                 
+                // Get password from sessionStorage (set during login) or fallback to email
+                const { data: { user } } = await supabaseClient.auth.getUser();
+                let password = sessionStorage.getItem('tempPassword');
+                
+                if (!password) {
+                    console.warn('⚠️ No password in sessionStorage, using email as fallback');
+                    password = user.email;
+                }
+                
+                console.log('🔐 Password source:', sessionStorage.getItem('tempPassword') ? 'sessionStorage' : 'email fallback');
+                
+                // Check if private key exists in localStorage
                 if (EncryptionService.hasPrivateKey(currentUser.id)) {
-                    privateKey = await EncryptionService.retrievePrivateKey(currentUser.id, password);
+                    console.log('✅ Private key found in localStorage, decrypting...');
+                    try {
+                        privateKey = await EncryptionService.retrievePrivateKey(currentUser.id, password);
+                        console.log('✅ Private key loaded successfully');
+                    } catch (decryptError) {
+                        console.error('❌ Failed to decrypt with stored password, prompting user...');
+                        // Prompt for password
+                        password = prompt('Enter your password to decrypt your encryption key:');
+                        if (password) {
+                            privateKey = await EncryptionService.retrievePrivateKey(currentUser.id, password);
+                            // Store it for this session
+                            sessionStorage.setItem('tempPassword', password);
+                            console.log('✅ Private key loaded with user-provided password');
+                        }
+                    }
                 } else if (currentUser.encrypted_private_key) {
-                    privateKey = await EncryptionService.decryptPrivateKeyFromBackup(
-                        currentUser.encrypted_private_key,
-                        password
-                    );
-                    await EncryptionService.storePrivateKey(privateKey, currentUser.id, password);
+                    console.log('🔐 Private key not in localStorage, trying server backup...');
+                    try {
+                        privateKey = await EncryptionService.decryptPrivateKeyFromBackup(
+                            currentUser.encrypted_private_key,
+                            password
+                        );
+                        // Cache it for next time
+                        await EncryptionService.storePrivateKey(privateKey, currentUser.id, password);
+                        console.log('✅ Private key restored from backup and cached');
+                    } catch (decryptError) {
+                        console.error('❌ Failed to decrypt backup, prompting user...');
+                        // Prompt for password
+                        password = prompt('Enter your password to decrypt your encryption key:');
+                        if (password) {
+                            privateKey = await EncryptionService.decryptPrivateKeyFromBackup(
+                                currentUser.encrypted_private_key,
+                                password
+                            );
+                            await EncryptionService.storePrivateKey(privateKey, currentUser.id, password);
+                            sessionStorage.setItem('tempPassword', password);
+                            console.log('✅ Private key restored with user-provided password');
+                        }
+                    }
+                } else {
+                    console.warn('⚠️ No private key found - user may need to set up encryption');
                 }
             } catch (error) {
-                console.error('Failed to load private key:', error);
+                console.error('❌ Failed to load private key:', error);
+                const retry = confirm('Failed to load encryption key. This may be because:\n\n1. Wrong password\n2. Keys not set up\n3. Browser data was cleared\n\nYou may not be able to download encrypted files.\n\nWould you like to try entering your password manually?');
+                
+                if (retry) {
+                    const password = prompt('Enter your password:');
+                    if (password) {
+                        sessionStorage.setItem('tempPassword', password);
+                        await loadPrivateKey(); // Retry
+                    }
+                }
             }
         }
 
