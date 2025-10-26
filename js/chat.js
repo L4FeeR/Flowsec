@@ -584,7 +584,8 @@ async function loadMessages() {
                     console.log('📝 Retrieved sent message from cache');
                 }
                 // Decrypt E2EE message locally using the user's private key
-                else if (msg.encrypted_content && msg.iv) {
+                else if (msg.encrypted_content && msg.iv && ((isSentByMe && msg.encrypted_aes_key_sender) || (!isSentByMe && msg.encrypted_aes_key))) {
+                    // Only use local decryption if we have the appropriate encrypted key
                     if (!privateKey) {
                         console.warn('🔒 Private key not loaded; cannot decrypt message');
                         decryptedText = '[🔐 Click "Generate Keys" button below to decrypt messages]';
@@ -600,9 +601,6 @@ async function loadMessages() {
                                 // Received message: use recipient's encrypted key
                                 encryptedAESKey = msg.encrypted_aes_key;
                                 console.log('🔓 Decrypting received message with recipient key');
-                            } else {
-                                // No appropriate key available
-                                throw new Error('No encrypted AES key available');
                             }
 
                             const packageObj = {
@@ -613,16 +611,7 @@ async function loadMessages() {
                             decryptedText = await EncryptionService.decryptMessage(packageObj, privateKey);
                         } catch (e) {
                             console.error('❌ Failed to decrypt message locally:', e);
-                            if (isSentByMe) {
-                                // Check if it's due to missing sender encryption column
-                                if (!msg.encrypted_aes_key_sender) {
-                                    decryptedText = '[Old message - sent before dual encryption was enabled. Run database migration to see future sent messages.]';
-                                } else {
-                                    decryptedText = '[Sent message - decryption failed]';
-                                }
-                            } else {
-                                decryptedText = '[Failed to decrypt message]';
-                            }
+                            decryptedText = '[Failed to decrypt message]';
                         }
                     }
                 } else if (msg.app_ciphertext && msg.app_iv) {
