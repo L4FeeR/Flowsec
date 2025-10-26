@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Management - Flowsec</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../css/auth.css">
+    <style>
+        .sessions-container {
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+
+        .sessions-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .sessions-header h1 {
+            color: #4CAF50;
+            margin: 0;
+        }
+
+        .btn-back {
+            background: #666;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-back:hover {
+            background: #555;
+        }
+
+        .btn-revoke-all {
+            background: #f44336;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+
+        .btn-revoke-all:hover {
+            background: #d32f2f;
+        }
+
+        .session-card {
+            background: var(--bg-secondary, #2a2a2a);
+            border: 1px solid var(--border-color, #444);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .session-card.current {
+            border: 2px solid #4CAF50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .session-info {
+            flex: 1;
+        }
+
+        .session-device {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--text-primary, #fff);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .current-badge {
+            background: #4CAF50;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: normal;
+        }
+
+        .session-details {
+            color: var(--text-secondary, #aaa);
+            font-size: 14px;
+        }
+
+        .session-details p {
+            margin: 5px 0;
+        }
+
+        .session-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-revoke {
+            background: #f44336;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-revoke:hover {
+            background: #d32f2f;
+        }
+
+        .btn-revoke:disabled {
+            background: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .device-icon {
+            font-size: 24px;
+        }
+
+        .no-sessions {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary, #aaa);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary, #aaa);
+        }
+
+        .info-box {
+            background: rgba(33, 150, 243, 0.1);
+            border: 1px solid #2196F3;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: var(--text-primary, #fff);
+        }
+
+        .info-box i {
+            color: #2196F3;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sessions-container">
+        <div class="sessions-header">
+            <h1><i class="fas fa-shield-alt"></i> Active Sessions</h1>
+            <a href="chat.html" class="btn-back">
+                <i class="fas fa-arrow-left"></i> Back to Chat
+            </a>
+        </div>
+
+        <div class="info-box">
+            <i class="fas fa-info-circle"></i>
+            <strong>Security Notice:</strong> These are all devices currently logged into your account. If you see an unfamiliar device, revoke it immediately.
+        </div>
+
+        <button id="revoke-all-btn" class="btn-revoke-all" style="display: none;">
+            <i class="fas fa-sign-out-alt"></i> Sign Out All Other Devices
+        </button>
+
+        <div id="sessions-list" class="loading">
+            <i class="fas fa-spinner fa-spin"></i> Loading sessions...
+        </div>
+    </div>
+
+    <script src="../js/config.js"></script>
+    <script src="../js/supabase-client.js"></script>
+    <script src="../js/session-manager.js"></script>
+    <script src="../js/theme-toggle.js"></script>
+    <script>
+        let sessions = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Load theme
+            loadTheme();
+
+            // Check authentication
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Validate current session
+            const isValid = await sessionManager.validateSession();
+            if (!isValid) {
+                alert('Your session is invalid. Please login again.');
+                await supabaseClient.auth.signOut();
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Load sessions
+            await loadSessions();
+
+            // Setup event listeners
+            document.getElementById('revoke-all-btn').addEventListener('click', revokeAllOthers);
+        });
+
+        async function loadSessions() {
+            try {
+                sessions = await sessionManager.getAllSessions();
+                displaySessions();
+            } catch (error) {
+                console.error('Failed to load sessions:', error);
+                document.getElementById('sessions-list').innerHTML = `
+                    <div class="no-sessions">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Failed to load sessions. Please try again.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function displaySessions() {
+            const container = document.getElementById('sessions-list');
+            
+            if (sessions.length === 0) {
+                container.innerHTML = `
+                    <div class="no-sessions">
+                        <i class="fas fa-laptop"></i>
+                        <p>No active sessions found.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Show revoke all button if more than 1 session
+            if (sessions.length > 1) {
+                document.getElementById('revoke-all-btn').style.display = 'block';
+            }
+
+            container.innerHTML = sessions.map(session => {
+                const isCurrent = session.is_current;
+                const createdAt = new Date(session.created_at).toLocaleString();
+                const lastActive = new Date(session.last_active).toLocaleString();
+                
+                // Get device icon
+                let deviceIcon = 'fa-laptop';
+                if (session.os === 'Android' || session.os === 'iOS') {
+                    deviceIcon = 'fa-mobile-alt';
+                } else if (session.os === 'Windows' || session.os === 'macOS' || session.os === 'Linux') {
+                    deviceIcon = 'fa-desktop';
+                }
+
+                return `
+                    <div class="session-card ${isCurrent ? 'current' : ''}">
+                        <div class="session-info">
+                            <div class="session-device">
+                                <i class="fas ${deviceIcon} device-icon"></i>
+                                ${session.device_info}
+                                ${isCurrent ? '<span class="current-badge">Current Device</span>' : ''}
+                            </div>
+                            <div class="session-details">
+                                <p><i class="fas fa-clock"></i> Logged in: ${createdAt}</p>
+                                <p><i class="fas fa-heartbeat"></i> Last active: ${lastActive}</p>
+                                ${session.ip_address ? `<p><i class="fas fa-map-marker-alt"></i> IP: ${session.ip_address}</p>` : ''}
+                            </div>
+                        </div>
+                        <div class="session-actions">
+                            <button 
+                                class="btn-revoke" 
+                                onclick="revokeSession('${session.id}', ${isCurrent})"
+                                ${isCurrent ? '' : ''}
+                            >
+                                <i class="fas fa-times-circle"></i> 
+                                ${isCurrent ? 'Sign Out' : 'Revoke'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function revokeSession(sessionId, isCurrent) {
+            const message = isCurrent 
+                ? 'Are you sure you want to sign out from this device?' 
+                : 'Are you sure you want to revoke this session?';
+            
+            if (!confirm(message)) {
+                return;
+            }
+
+            try {
+                await sessionManager.revokeSession(sessionId);
+                
+                if (!isCurrent) {
+                    // Reload sessions if not current
+                    await loadSessions();
+                    alert('Session revoked successfully!');
+                }
+                // If current session, user will be redirected to login by sessionManager
+            } catch (error) {
+                alert('Failed to revoke session. Please try again.');
+            }
+        }
+
+        async function revokeAllOthers() {
+            if (!confirm('Are you sure you want to sign out from all other devices? This will keep only your current session active.')) {
+                return;
+            }
+
+            try {
+                await sessionManager.revokeAllOtherSessions();
+                await loadSessions();
+                alert('All other sessions have been revoked successfully!');
+            } catch (error) {
+                alert('Failed to revoke sessions. Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>

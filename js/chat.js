@@ -18,6 +18,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check authentication
     await checkAuth();
     
+    // Create or validate session
+    await initializeSession();
+    
     // Load current user profile
     await loadCurrentUser();
     
@@ -99,6 +102,36 @@ async function checkAuth() {
     } catch (error) {
         console.error('Authentication check failed:', error);
         window.location.href = 'login.html';
+    }
+}
+
+// Initialize or validate session
+async function initializeSession() {
+    try {
+        // Check if session manager is loaded
+        if (typeof sessionManager === 'undefined') {
+            console.warn('⚠️ Session manager not loaded');
+            return;
+        }
+
+        // First, try to validate existing session
+        const isValid = await sessionManager.validateSession();
+        
+        if (!isValid) {
+            // No valid session found, create new one
+            console.log('📝 Creating new session...');
+            await sessionManager.createSession();
+        } else {
+            console.log('✅ Session validated');
+        }
+
+        // Update activity every 5 minutes
+        setInterval(async () => {
+            await sessionManager.updateActivity();
+        }, 5 * 60 * 1000);
+
+    } catch (error) {
+        console.error('❌ Session initialization error:', error);
     }
 }
 
