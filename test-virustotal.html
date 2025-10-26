@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test VirusTotal Integration</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            margin-top: 0;
+        }
+        .test-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+        }
+        input[type="file"] {
+            background: white;
+            color: #333;
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            width: 100%;
+            margin: 10px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+        .warning { color: #ff9800; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 VirusTotal Integration Test</h1>
+        <p>Test the Supabase Edge Function proxy for VirusTotal scanning</p>
+
+        <!-- Test 1: Endpoint Check -->
+        <div class="test-section">
+            <h2>Test 1: Endpoint Status</h2>
+            <button onclick="testEndpoint()">Check Endpoint</button>
+            <div id="endpoint-result" class="result"></div>
+        </div>
+
+        <!-- Test 2: File Upload -->
+        <div class="test-section">
+            <h2>Test 2: Upload & Scan File</h2>
+            <input type="file" id="fileInput" accept="*/*">
+            <button onclick="testFileUpload()" id="uploadBtn">Upload & Scan</button>
+            <div id="upload-result" class="result"></div>
+        </div>
+
+        <!-- Test 3: Check Analysis -->
+        <div class="test-section">
+            <h2>Test 3: Get Scan Results</h2>
+            <p>Analysis ID: <input type="text" id="analysisId" placeholder="Paste analysis ID here" style="width: 400px; padding: 5px;"></p>
+            <button onclick="testGetAnalysis()">Get Results</button>
+            <div id="analysis-result" class="result"></div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        const PROXY_URL = `${SUPABASE_URL}/functions/v1/virustotal-scan`;
+
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type;
+            element.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            element.scrollTop = element.scrollHeight;
+        }
+
+        async function testEndpoint() {
+            const resultDiv = document.getElementById('endpoint-result');
+            resultDiv.innerHTML = '';
+            
+            log('endpoint-result', '🔍 Testing endpoint...', 'info');
+            
+            try {
+                // Test OPTIONS (CORS preflight)
+                log('endpoint-result', 'Testing CORS preflight...', 'info');
+                const optionsResponse = await fetch(`${PROXY_URL}/scan`, {
+                    method: 'OPTIONS'
+                });
+                
+                if (optionsResponse.ok) {
+                    log('endpoint-result', '✅ CORS preflight: OK', 'success');
+                } else {
+                    log('endpoint-result', `⚠️ CORS preflight: ${optionsResponse.status}`, 'warning');
+                }
+
+                // Test base endpoint
+                log('endpoint-result', 'Testing base endpoint...', 'info');
+                const baseResponse = await fetch(PROXY_URL);
+                const baseData = await baseResponse.json();
+                log('endpoint-result', `Response: ${JSON.stringify(baseData, null, 2)}`, 'info');
+
+                if (baseData.error === 'Invalid endpoint') {
+                    log('endpoint-result', '✅ Edge function is deployed and responding!', 'success');
+                } else {
+                    log('endpoint-result', '⚠️ Unexpected response', 'warning');
+                }
+
+            } catch (error) {
+                log('endpoint-result', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testFileUpload() {
+            const fileInput = document.getElementById('fileInput');
+            const resultDiv = document.getElementById('upload-result');
+            const uploadBtn = document.getElementById('uploadBtn');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Please select a file first!');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            resultDiv.innerHTML = '';
+            uploadBtn.disabled = true;
+
+            log('upload-result', `📤 Uploading: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`, 'info');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                log('upload-result', 'Sending to VirusTotal proxy...', 'info');
+                const response = await fetch(`${PROXY_URL}/scan`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                log('upload-result', `Status: ${response.status} ${response.statusText}`, 'info');
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    log('upload-result', `❌ Error: ${errorText}`, 'error');
+                    return;
+                }
+
+                const result = await response.json();
+                log('upload-result', '✅ Upload successful!', 'success');
+                log('upload-result', JSON.stringify(result, null, 2), 'success');
+
+                if (result.data && result.data.id) {
+                    log('upload-result', `\n📋 Analysis ID: ${result.data.id}`, 'info');
+                    log('upload-result', 'Copy this ID to Test 3 to check results!', 'info');
+                    document.getElementById('analysisId').value = result.data.id;
+                }
+
+            } catch (error) {
+                log('upload-result', `❌ Error: ${error.message}`, 'error');
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        }
+
+        async function testGetAnalysis() {
+            const analysisId = document.getElementById('analysisId').value.trim();
+            const resultDiv = document.getElementById('analysis-result');
+            
+            if (!analysisId) {
+                alert('Please enter an analysis ID!');
+                return;
+            }
+
+            resultDiv.innerHTML = '';
+            log('analysis-result', `🔍 Fetching analysis: ${analysisId}`, 'info');
+
+            try {
+                const response = await fetch(`${PROXY_URL}/analysis/${analysisId}`, {
+                    method: 'GET'
+                });
+
+                log('analysis-result', `Status: ${response.status} ${response.statusText}`, 'info');
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    log('analysis-result', `❌ Error: ${errorText}`, 'error');
+                    return;
+                }
+
+                const result = await response.json();
+                log('analysis-result', '✅ Analysis retrieved!', 'success');
+                log('analysis-result', JSON.stringify(result, null, 2), 'success');
+
+                // Parse results
+                if (result.data && result.data.attributes) {
+                    const attrs = result.data.attributes;
+                    log('analysis-result', `\n📊 Status: ${attrs.status}`, 'info');
+                    
+                    if (attrs.stats) {
+                        const stats = attrs.stats;
+                        const total = stats.malicious + stats.suspicious + stats.harmless + stats.undetected;
+                        const positives = stats.malicious + stats.suspicious;
+                        
+                        log('analysis-result', `\n🛡️ Scan Results:`, 'info');
+                        log('analysis-result', `   Malicious: ${stats.malicious}`, stats.malicious > 0 ? 'error' : 'success');
+                        log('analysis-result', `   Suspicious: ${stats.suspicious}`, stats.suspicious > 0 ? 'warning' : 'success');
+                        log('analysis-result', `   Harmless: ${stats.harmless}`, 'success');
+                        log('analysis-result', `   Undetected: ${stats.undetected}`, 'info');
+                        log('analysis-result', `   Total Engines: ${total}`, 'info');
+                        
+                        if (positives === 0) {
+                            log('analysis-result', '\n✅ FILE IS CLEAN!', 'success');
+                        } else if (positives < 5) {
+                            log('analysis-result', `\n⚠️ ${positives} DETECTIONS FOUND`, 'warning');
+                        } else {
+                            log('analysis-result', `\n🚨 ${positives} THREATS DETECTED!`, 'error');
+                        }
+                    }
+                }
+
+            } catch (error) {
+                log('analysis-result', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-test endpoint on load
+        window.addEventListener('DOMContentLoaded', () => {
+            log('endpoint-result', 'Ready to test!', 'info');
+            testEndpoint();
+        });
+    </script>
+</body>
+</html>

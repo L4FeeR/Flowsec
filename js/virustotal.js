@@ -1,8 +1,9 @@
 // VirusTotal API Integration Service
 class VirusTotalService {
-    constructor(apiKey) {
-        this.apiKey = apiKey;
-        this.baseUrl = 'https://www.virustotal.com/api/v3';
+    constructor(supabaseUrl) {
+        // Use Supabase Edge Function as proxy to bypass CORS
+        this.baseUrl = `${supabaseUrl}/functions/v1/virustotal-scan`;
+        console.log('🔧 VirusTotal service using proxy:', this.baseUrl);
     }
 
     /**
@@ -17,11 +18,8 @@ class VirusTotalService {
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch(`${this.baseUrl}/files`, {
+            const response = await fetch(`${this.baseUrl}/scan`, {
                 method: 'POST',
-                headers: {
-                    'x-apikey': this.apiKey
-                },
                 body: formData
             });
 
@@ -46,12 +44,6 @@ class VirusTotalService {
             };
         } catch (error) {
             console.error('❌ VirusTotal scan failed:', error);
-            
-            // Check if it's a CORS error
-            if (error.message.includes('CORS') || error.name === 'TypeError') {
-                throw new Error('VirusTotal scanning requires a backend proxy due to CORS restrictions. File uploaded without virus scan.');
-            }
-            
             throw error;
         }
     }
@@ -65,11 +57,8 @@ class VirusTotalService {
         try {
             console.log('🔍 Fetching VirusTotal analysis:', scanId);
             
-            const response = await fetch(`${this.baseUrl}/analyses/${scanId}`, {
-                method: 'GET',
-                headers: {
-                    'x-apikey': this.apiKey
-                }
+            const response = await fetch(`${this.baseUrl}/analysis/${scanId}`, {
+                method: 'GET'
             });
 
             if (!response.ok) {
@@ -104,11 +93,8 @@ class VirusTotalService {
         try {
             console.log('🔍 Fetching VirusTotal file report:', fileHash);
             
-            const response = await fetch(`${this.baseUrl}/files/${fileHash}`, {
-                method: 'GET',
-                headers: {
-                    'x-apikey': this.apiKey
-                }
+            const response = await fetch(`${this.baseUrl}/file/${fileHash}`, {
+                method: 'GET'
             });
 
             if (!response.ok) {
@@ -206,13 +192,13 @@ class VirusTotalService {
     }
 }
 
-// Global instance - auto-initialize with API key from config
+// Global instance - auto-initialize with Supabase URL
 let virusTotalService = null;
 
 // Auto-initialize when config is loaded
-if (typeof VIRUSTOTAL_API_KEY !== 'undefined' && VIRUSTOTAL_API_KEY) {
-    virusTotalService = new VirusTotalService(VIRUSTOTAL_API_KEY);
-    console.log('✅ VirusTotal service initialized with API key');
+if (typeof SUPABASE_URL !== 'undefined' && SUPABASE_URL) {
+    virusTotalService = new VirusTotalService(SUPABASE_URL);
+    console.log('✅ VirusTotal service initialized with proxy endpoint');
 } else {
-    console.warn('⚠️ VirusTotal API key not found - file scanning will be disabled');
+    console.warn('⚠️ Supabase URL not found - VirusTotal scanning will be disabled');
 }
