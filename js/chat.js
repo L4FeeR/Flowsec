@@ -865,6 +865,9 @@ function showError(message) {
 
 // Setup event listeners
 function setupEventListeners() {
+    // Mobile menu toggle
+    setupMobileMenu();
+    
     // Send message button
     document.getElementById('send-btn').addEventListener('click', sendMessage);
     
@@ -1742,4 +1745,44 @@ function showSuccess(message) {
 
 function showError(message) {
     showNotification(message, 'error');
+}
+
+/**
+ * Setup mobile menu toggle functionality
+ */
+function setupMobileMenu() {
+    const sidebar = document.querySelector('.sidebar');
+    const menuToggle = document.getElementById('mobile-menu-toggle');
+    const overlay = document.getElementById('sidebar-overlay');
+    
+    if (!menuToggle || !sidebar || !overlay) {
+        // Elements might not exist on some pages
+        return;
+    }
+    
+    // Toggle sidebar
+    menuToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('active');
+        overlay.classList.toggle('active');
+        menuToggle.classList.toggle('sidebar-open');
+    });
+    
+    // Close sidebar when overlay is clicked
+    overlay.addEventListener('click', () => {
+        sidebar.classList.remove('active');
+        overlay.classList.remove('active');
+        menuToggle.classList.remove('sidebar-open');
+    });
+    
+    // Close sidebar when a user is selected (on mobile)
+    const userItems = document.querySelectorAll('.user-item');
+    userItems.forEach(item => {
+        item.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('active');
+                overlay.classList.remove('active');
+                menuToggle.classList.remove('sidebar-open');
+            }
+        });
+    });
 }
