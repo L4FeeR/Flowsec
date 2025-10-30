@@ -625,23 +625,44 @@ async function loadMessages() {
                     } else {
                         try {
                             // Choose the correct encrypted AES key
-                            let encryptedAESKey;
-                            if (isSentByMe && msg.encrypted_aes_key_sender) {
-                                // Sent message: use sender's encrypted key
-                                encryptedAESKey = msg.encrypted_aes_key_sender;
-                                console.log('🔓 Decrypting sent message with sender key');
-                            } else if (!isSentByMe && msg.encrypted_aes_key) {
-                                // Received message: use recipient's encrypted key
-                                encryptedAESKey = msg.encrypted_aes_key;
-                                console.log('🔓 Decrypting received message with recipient key');
+                            let encryptedAESKey = null;
+                            
+                            if (isSentByMe) {
+                                // For sent messages: try sender key first, fallback to localStorage cache
+                                if (msg.encrypted_aes_key_sender) {
+                                    encryptedAESKey = msg.encrypted_aes_key_sender;
+                                    console.log('🔓 Decrypting sent message with sender key (dual encryption)');
+                                } else {
+                                    // Old message without dual encryption - check localStorage cache
+                                    const cacheKey = `sent_msg_${msg.id}`;
+                                    const cachedText = localStorage.getItem(cacheKey);
+                                    if (cachedText) {
+                                        decryptedText = cachedText;
+                                        console.log('✅ Retrieved sent message from localStorage cache');
+                                    } else {
+                                        console.warn('⚠️ Old sent message without dual encryption and not in cache');
+                                        decryptedText = '[Old message - not cached. Try asking the recipient to forward it.]';
+                                    }
+                                }
+                            } else {
+                                // For received messages: use recipient key
+                                if (msg.encrypted_aes_key) {
+                                    encryptedAESKey = msg.encrypted_aes_key;
+                                    console.log('🔓 Decrypting received message with recipient key');
+                                } else {
+                                    console.warn('⚠️ Received message without encrypted key');
+                                }
                             }
 
-                            const packageObj = {
-                                encryptedAESKey: encryptedAESKey,
-                                iv: msg.iv,
-                                encryptedData: msg.encrypted_content
-                            };
-                            decryptedText = await EncryptionService.decryptMessage(packageObj, privateKey);
+                            // If we have an encrypted key, decrypt the message
+                            if (encryptedAESKey && !decryptedText) {
+                                const packageObj = {
+                                    encryptedAESKey: encryptedAESKey,
+                                    iv: msg.iv,
+                                    encryptedData: msg.encrypted_content
+                                };
+                                decryptedText = await EncryptionService.decryptMessage(packageObj, privateKey);
+                            }
                         } catch (e) {
                             console.error('❌ Failed to decrypt message locally:', e);
                             decryptedText = '[Failed to decrypt message]';
@@ -661,8 +682,15 @@ async function loadMessages() {
                     } else {
                         decryptedText = decData.plaintext;
                     }
-                } else {
-                    decryptedText = '[No content]';
+                }
+                
+                // Final fallback
+                if (!decryptedText) {
+                    if (msg.sender_id === currentUser.id) {
+                        decryptedText = '[Old message - not available]';
+                    } else {
+                        decryptedText = '[No content]';
+                    }
                 }
                 
                 // Display the message
@@ -784,10 +812,19 @@ async function sendMessage() {
 
         console.log('✅ Message saved to database:', messageData);
 
-        // Cache the plaintext message locally for this session
+        // Cache the plaintext message locally for this session AND in localStorage
         const messageId = messageData.id;
         if (!window.sentMessagesCache) window.sentMessagesCache = {};
         window.sentMessagesCache[messageId] = message;
+        
+        // Also save to localStorage so it persists across page reloads
+        const cacheKey = `sent_msg_${messageId}`;
+        try {
+            localStorage.setItem(cacheKey, message);
+            console.log(`💾 Cached sent message ${messageId} to localStorage`);
+        } catch (e) {
+            console.warn('⚠️ Failed to cache message to localStorage:', e);
+        }
 
         // Display message immediately
         displayMessage({
