@@ -717,6 +717,9 @@ async function loadMessages() {
         
         console.log('✅ All messages loaded and decrypted');
         
+        // Check if we should show encryption upgrade notice
+        await checkAndShowEncryptionUpgradeNotice();
+        
         // Also load files shared with this user
         await loadFilesForConversation();
         
@@ -733,6 +736,180 @@ async function loadMessages() {
             </div>
         `;
     }
+}
+
+// Check if we should show encryption upgrade notice
+async function checkAndShowEncryptionUpgradeNotice() {
+    try {
+        // Check if notice already shown
+        const noticeShown = localStorage.getItem('encryption_upgrade_notice_shown');
+        if (noticeShown === 'true') {
+            return;
+        }
+        
+        // Check if there are any old unrecoverable messages in the current view
+        const messagesArea = document.getElementById('messages-area');
+        const oldMessages = messagesArea.querySelectorAll('[data-old-message="true"]');
+        
+        if (oldMessages.length > 0) {
+            showEncryptionUpgradeNotice();
+        } else {
+            // Mark as shown even if no old messages
+            localStorage.setItem('encryption_upgrade_notice_shown', 'true');
+        }
+    } catch (error) {
+        console.error('Error checking for encryption upgrade notice:', error);
+    }
+}
+
+// Show encryption upgrade notice
+function showEncryptionUpgradeNotice() {
+    const modal = document.createElement('div');
+    modal.id = 'encryption-upgrade-modal';
+    modal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+                    background: rgba(0,0,0,0.85); z-index: 10000; 
+                    display: flex; align-items: center; justify-content: center;
+                    backdrop-filter: blur(4px);">
+            <div style="background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%); 
+                        padding: 35px; border-radius: 16px; 
+                        max-width: 550px; color: #fff; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+                        border: 1px solid rgba(255,255,255,0.1);">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">🔐</div>
+                    <h2 style="margin: 0; font-size: 24px; color: #4CAF50;">Encryption Upgrade</h2>
+                </div>
+                
+                <p style="line-height: 1.6; color: #ccc; margin-bottom: 20px;">
+                    Flowsec has been upgraded with <strong>dual encryption</strong> for better security and usability.
+                </p>
+                
+                <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 8px; 
+                            border-left: 4px solid #4CAF50; margin-bottom: 15px;">
+                    <p style="margin: 0; font-weight: bold; color: #4CAF50; margin-bottom: 8px;">✅ What's Improved:</p>
+                    <ul style="margin: 5px 0; padding-left: 20px; color: #ccc;">
+                        <li>All new messages you send are now visible after page reload</li>
+                        <li>Messages are encrypted for both sender and recipient</li>
+                        <li>Better privacy and user experience</li>
+                    </ul>
+                </div>
+                
+                <div style="background: rgba(255, 152, 0, 0.1); padding: 15px; border-radius: 8px; 
+                            border-left: 4px solid #FF9800; margin-bottom: 25px;">
+                    <p style="margin: 0; font-weight: bold; color: #FF9800; margin-bottom: 8px;">⚠️ About Old Messages:</p>
+                    <p style="margin: 0; color: #ccc; font-size: 14px;">
+                        Some messages sent before this upgrade cannot be decrypted because they were 
+                        only encrypted for the recipient. You can hide these messages to clean up your chat.
+                    </p>
+                </div>
+                
+                <p style="color: #aaa; font-size: 14px; margin-bottom: 20px;">
+                    Would you like to hide old unrecoverable messages from your chats?
+                </p>
+                
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button onclick="hideOldMessages()" 
+                            style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
+                                   padding: 12px 24px; border: none; border-radius: 8px; 
+                                   color: white; cursor: pointer; font-weight: bold;
+                                   box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+                                   transition: transform 0.2s;">
+                        Yes, Hide Them
+                    </button>
+                    <button onclick="keepOldMessages()" 
+                            style="background: #444; padding: 12px 24px; border: none; 
+                                   border-radius: 8px; color: white; cursor: pointer;
+                                   transition: transform 0.2s;">
+                        Keep Them
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    localStorage.setItem('encryption_upgrade_notice_shown', 'true');
+}
+
+// Hide old unrecoverable messages
+window.hideOldMessages = function() {
+    try {
+        // Mark old messages as hidden in localStorage
+        localStorage.setItem('hide_old_messages', 'true');
+        
+        // Remove old messages from current view
+        const messagesArea = document.getElementById('messages-area');
+        const oldMessages = messagesArea.querySelectorAll('[data-old-message="true"]');
+        
+        oldMessages.forEach(msg => {
+            msg.style.transition = 'opacity 0.3s, transform 0.3s';
+            msg.style.opacity = '0';
+            msg.style.transform = 'scale(0.95)';
+            setTimeout(() => msg.remove(), 300);
+        });
+        
+        // Close modal
+        const modal = document.getElementById('encryption-upgrade-modal');
+        if (modal) {
+            modal.style.transition = 'opacity 0.3s';
+            modal.style.opacity = '0';
+            setTimeout(() => modal.remove(), 300);
+        }
+        
+        // Show success message
+        showNotification('Old messages hidden successfully', 'success');
+        
+        console.log('✅ Old unrecoverable messages hidden');
+    } catch (error) {
+        console.error('Error hiding old messages:', error);
+        showNotification('Error hiding messages', 'error');
+    }
+};
+
+// Keep old messages visible
+window.keepOldMessages = function() {
+    try {
+        localStorage.setItem('hide_old_messages', 'false');
+        
+        // Close modal
+        const modal = document.getElementById('encryption-upgrade-modal');
+        if (modal) {
+            modal.style.transition = 'opacity 0.3s';
+            modal.style.opacity = '0';
+            setTimeout(() => modal.remove(), 300);
+        }
+        
+        console.log('✅ User chose to keep old messages visible');
+    } catch (error) {
+        console.error('Error keeping old messages:', error);
+    }
+};
+
+// Show notification helper
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3'};
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 10001;
+        animation: slideIn 0.3s ease;
+        font-weight: 500;
+    `;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.transition = 'opacity 0.3s';
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
 }
 
 // Send message
@@ -858,10 +1035,31 @@ function displayMessage(message) {
         minute: '2-digit' 
     });
     
+    // Check if this is an old unrecoverable message
+    const isOldMessage = message.text && (
+        message.text.includes('[Old message') || 
+        message.text === '[Old message - not available]'
+    );
+    
+    // Check if user wants old messages hidden
+    const hideOldMessages = localStorage.getItem('hide_old_messages') === 'true';
+    
+    // Don't display if it's an old message and user wants them hidden
+    if (isOldMessage && hideOldMessages) {
+        console.log('Skipping display of old message (hidden by user preference)');
+        return;
+    }
+    
     const encryptionBadge = message.encrypted ? '<i class="fas fa-lock" style="font-size: 10px; margin-left: 5px;" title="Encrypted"></i>' : '';
     
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+    
+    // Add data attribute to mark old messages
+    if (isOldMessage) {
+        messageDiv.setAttribute('data-old-message', 'true');
+    }
+    
     messageDiv.innerHTML = `
         <div class="message-content">
             <div class="message-text">${escapeHtml(message.text)}</div>
