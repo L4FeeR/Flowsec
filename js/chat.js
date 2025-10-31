@@ -885,6 +885,23 @@ window.keepOldMessages = function() {
     }
 };
 
+// Reset old messages preference (useful for debugging)
+window.resetOldMessagesPreference = function() {
+    try {
+        localStorage.removeItem('hide_old_messages');
+        localStorage.removeItem('encryption_upgrade_notice_shown');
+        console.log('✅ Old messages preference reset. Reload the page to see the notice again.');
+        showNotification('Preferences reset. Reload the page.', 'success');
+        
+        // Reload messages to show hidden ones
+        if (selectedUser) {
+            loadMessages();
+        }
+    } catch (error) {
+        console.error('Error resetting preference:', error);
+    }
+};
+
 // Show notification helper
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
@@ -1035,18 +1052,19 @@ function displayMessage(message) {
         minute: '2-digit' 
     });
     
-    // Check if this is an old unrecoverable message
-    const isOldMessage = message.text && (
-        message.text.includes('[Old message') || 
-        message.text === '[Old message - not available]'
+    // Check if this is an old unrecoverable message (ONLY error messages, not normal messages)
+    const isOldUnrecoverableMessage = message.text && isSent && (
+        message.text === '[Old message - not available]' ||
+        message.text.startsWith('[Old message - not cached') ||
+        message.text.startsWith('[Old message - encrypted only for recipient')
     );
     
     // Check if user wants old messages hidden
     const hideOldMessages = localStorage.getItem('hide_old_messages') === 'true';
     
-    // Don't display if it's an old message and user wants them hidden
-    if (isOldMessage && hideOldMessages) {
-        console.log('Skipping display of old message (hidden by user preference)');
+    // Don't display if it's an old unrecoverable message and user wants them hidden
+    if (isOldUnrecoverableMessage && hideOldMessages) {
+        console.log('Skipping display of old unrecoverable message (hidden by user preference)');
         return;
     }
     
@@ -1055,8 +1073,8 @@ function displayMessage(message) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
     
-    // Add data attribute to mark old messages
-    if (isOldMessage) {
+    // Add data attribute to mark old unrecoverable messages
+    if (isOldUnrecoverableMessage) {
         messageDiv.setAttribute('data-old-message', 'true');
     }
     
