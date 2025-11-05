@@ -182,6 +182,44 @@
     position: relative;
 }
 
+/* Clickable Links in Messages */
+.message-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    word-break: break-all;
+    transition: opacity 0.2s;
+}
+
+.message-link:hover {
+    opacity: 0.8;
+    text-decoration-thickness: 2px;
+}
+
+/* Style links differently for sent vs received messages */
+.message.sent .message-link {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.message.received .message-link {
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+/* Dark theme link adjustments */
+body[data-theme="dark"] .message.received .message-link {
+    color: #4CAF50;
+}
+
+/* External link icon (optional) */
+.message-link::after {
+    content: " ↗";
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .emoji-picker {

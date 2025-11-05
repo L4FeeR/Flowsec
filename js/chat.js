@@ -880,7 +880,7 @@ function displayMessage(message) {
     messageDiv.innerHTML = `
         ${deleteButton}
         <div class="message-content">
-            <div class="message-text">${escapeHtml(message.text)}</div>
+            <div class="message-text">${linkifyText(message.text)}</div>
             <span class="message-time">${time} ${encryptionBadge}</span>
         </div>
     `;
@@ -894,6 +894,26 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Convert URLs in text to clickable links
+function linkifyText(text) {
+    // First escape HTML to prevent XSS
+    const escaped = escapeHtml(text);
+    
+    // URL regex pattern - matches http(s), ftp, and www links
+    const urlPattern = /(\b(https?|ftp):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|]|www\.[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/gi;
+    
+    // Replace URLs with clickable links
+    return escaped.replace(urlPattern, (url) => {
+        // Add protocol if missing (for www. links)
+        const href = url.startsWith('www.') ? 'http://' + url : url;
+        
+        // Truncate long URLs for display
+        const displayUrl = url.length > 50 ? url.substring(0, 47) + '...' : url;
+        
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="message-link" title="${url}">${displayUrl}</a>`;
+    });
 }
 
 // Show error message in chat area
