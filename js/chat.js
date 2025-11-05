@@ -867,9 +867,18 @@ function displayMessage(message) {
     
     const encryptionBadge = message.encrypted ? '<i class="fas fa-lock" style="font-size: 10px; margin-left: 5px;" title="Encrypted"></i>' : '';
     
+    // Add delete button for sent messages
+    const deleteButton = isSent && message.id ? `
+        <button class="message-delete-btn" onclick="deleteMessage('${message.id}')" title="Delete message">
+            <i class="fas fa-trash"></i>
+        </button>
+    ` : '';
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+    messageDiv.setAttribute('data-message-id', message.id || '');
     messageDiv.innerHTML = `
+        ${deleteButton}
         <div class="message-content">
             <div class="message-text">${escapeHtml(message.text)}</div>
             <span class="message-time">${time} ${encryptionBadge}</span>
@@ -986,6 +995,9 @@ function setupEventListeners() {
     
     // File input change
     document.getElementById('file-input').addEventListener('change', handleFileSelect);
+    
+    // Setup emoji picker
+    setupEmojiPicker();
     
     // Close modals on Escape key
     document.addEventListener('keydown', (e) => {
@@ -1591,12 +1603,21 @@ function displayFileMessage(fileRecord, isSent) {
 
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+    messageDiv.setAttribute('data-file-id', fileRecord.id);
 
     const vtBadge = getFileVirusTotalBadge(fileRecord);
     const fileIcon = getFileIconForType(fileRecord.file_type);
     const timestamp = new Date(fileRecord.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    // Add delete button for sent files
+    const deleteButton = isSent ? `
+        <button class="message-delete-btn" onclick="deleteFile('${fileRecord.id}')" title="Delete file">
+            <i class="fas fa-trash"></i>
+        </button>
+    ` : '';
 
     messageDiv.innerHTML = `
+        ${deleteButton}
         <div class="message-content file-message">
             <div class="file-attachment">
                 <div class="file-icon">${fileIcon}</div>
@@ -1724,6 +1745,8 @@ async function downloadFileFromChat(fileId) {
 // Global function for onclick handlers
 window.downloadFileFromChat = downloadFileFromChat;
 window.regenerateKeys = regenerateKeys;
+window.deleteMessage = deleteMessage;
+window.deleteFile = deleteFile;
 
 /**
  * Show file upload progress
@@ -1844,4 +1867,228 @@ function setupMobileMenu() {
             }
         });
     });
+}
+
+// =====================================================
+// EMOJI PICKER FUNCTIONALITY
+// =====================================================
+
+const emojiData = {
+    smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐'],
+    gestures: ['👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💪','🦵','🦶','👂','🦻','👃','🧠','🦷','🦴','👀','👁','👅','👄','💋'],
+    hearts: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','💌','❤️‍🔥','❤️‍🩹','💏','💑','👨‍❤️‍👨','👩‍❤️‍👩','💐','🌹','🥀','🌺','🌸','🌼','🌻','🌷'],
+    animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐽','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷','🕸','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈'],
+    food: ['🍕','🍔','🍟','🌭','🍿','🧂','🥓','🥚','🍳','🧇','🥞','🧈','🍞','🥐','🥖','🥨','🥯','🧀','🥗','🥙','🌮','🌯','🥪','🍖','🍗','🥩','🍤','🍱','🍘','🍙','🍚','🍛','🍜','🦪','🍣','🍤','🍥','🥮','🍢','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜'],
+    activities: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸','🥌','🎿','⛷','🏂','🪂','🏋️','🤼','🤸','🤺','⛹️','🤾','🏌️','🏇','🧘','🏄','🏊','🤽','🚣','🧗','🚴','🚵','🎖','🏆','🏅','🥇','🥈','🥉'],
+    travel: ['🚗','🚕','🚙','🚌','🚎','🏎','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🦯','🦽','🦼','🛴','🚲','🛵','🏍','🛺','🚨','🚔','🚍','🚘','🚖','🚡','🚠','🚟','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️','🛫','🛬','🛩','💺','🛰','🚁','🛸','🚀','🛶','⛵','🚤','🛥','🛳','⛴','🚢','⚓','⛽','🚧'],
+    objects: ['💡','🔦','🏮','🪔','📱','💻','⌨️','🖥','🖨','🖱','🖲','🕹','🗜','💾','💿','📀','📼','📷','📸','📹','🎥','📽','🎞','📞','☎️','📟','📠','📺','📻','🎙','🎚','🎛','🧭','⏱','⏲','⏰','🕰','⌛','⏳','📡','🔋','🔌','💡','🔦','🕯','🪔','🧯','🛢','💸','💵','💴','💶','💷','💰','💳','🪙','💎','⚖️','🪜','🧰','🪛','🔧','🔨','⚒','🛠','⛏','🪚','🔩','⚙️','🪤','🧱','⛓','🧲','🔫','💣','🧨','🪓','🔪','🗡','⚔️','🛡','🚬','⚰️','🪦','⚱️','🏺','🔮','📿','🧿','💈','⚗️','🔭','🔬','🕳','🩹','🩺','💊','💉','🩸','🧬','🦠','🧫','🧪','🌡','🧹','🪠','🧺','🧻','🚽','🚰','🚿','🛁','🪤','🪒','🧼','🪥','🪒','🧴','🧷','🧹','🧺','🧻','🪣','🧼','🪥','🧽','🧯','🛒']
+};
+
+let currentEmojiCategory = 'smileys';
+
+function setupEmojiPicker() {
+    const emojiBtn = document.getElementById('emoji-btn');
+    const emojiPicker = document.getElementById('emoji-picker');
+    const emojiClose = document.getElementById('emoji-close');
+    const emojiGrid = document.getElementById('emoji-grid');
+    const messageInput = document.getElementById('message-input');
+    
+    if (!emojiBtn || !emojiPicker) return;
+    
+    // Toggle emoji picker
+    emojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = emojiPicker.style.display === 'flex';
+        emojiPicker.style.display = isVisible ? 'none' : 'flex';
+        if (!isVisible) {
+            renderEmojis(currentEmojiCategory);
+        }
+    });
+    
+    // Close emoji picker
+    emojiClose.addEventListener('click', () => {
+        emojiPicker.style.display = 'none';
+    });
+    
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (!emojiPicker.contains(e.target) && e.target !== emojiBtn && !emojiBtn.contains(e.target)) {
+            emojiPicker.style.display = 'none';
+        }
+    });
+    
+    // Category buttons
+    document.querySelectorAll('.emoji-category').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.emoji-category').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const category = btn.dataset.category;
+            currentEmojiCategory = category;
+            renderEmojis(category);
+        });
+    });
+    
+    // Render emojis function
+    function renderEmojis(category) {
+        const emojis = emojiData[category] || emojiData.smileys;
+        emojiGrid.innerHTML = emojis.map(emoji => `
+            <button class="emoji-item" data-emoji="${emoji}">${emoji}</button>
+        `).join('');
+        
+        // Add click handlers
+        emojiGrid.querySelectorAll('.emoji-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const emoji = item.dataset.emoji;
+                const cursorPos = messageInput.selectionStart;
+                const textBefore = messageInput.value.substring(0, cursorPos);
+                const textAfter = messageInput.value.substring(cursorPos);
+                messageInput.value = textBefore + emoji + textAfter;
+                messageInput.focus();
+                messageInput.selectionStart = messageInput.selectionEnd = cursorPos + emoji.length;
+                emojiPicker.style.display = 'none';
+            });
+        });
+    }
+    
+    // Initial render
+    renderEmojis(currentEmojiCategory);
+}
+
+// =====================================================
+// DELETE MESSAGE FUNCTIONALITY
+// =====================================================
+
+async function deleteMessage(messageId) {
+    if (!messageId) {
+        console.error('No message ID provided');
+        return;
+    }
+    
+    if (!confirm('Delete this message? This action cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        console.log('🗑️ Deleting message:', messageId);
+        
+        // Delete from database
+        const { error } = await supabaseClient
+            .from('messages')
+            .delete()
+            .eq('id', messageId)
+            .eq('sender_id', currentUser.id); // Only allow deleting own messages
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('✅ Message deleted from database');
+        
+        // Remove from UI
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (messageElement) {
+            messageElement.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => {
+                messageElement.remove();
+                
+                // Check if no messages left
+                const messagesArea = document.getElementById('messages-area');
+                if (messagesArea.children.length === 0) {
+                    messagesArea.innerHTML = `
+                        <div style="text-align: center; padding: 20px; color: #999;">
+                            <p>No messages yet. Start the conversation!</p>
+                        </div>
+                    `;
+                }
+            }, 300);
+        }
+        
+        // Remove from cache
+        if (window.sentMessagesCache && window.sentMessagesCache[messageId]) {
+            delete window.sentMessagesCache[messageId];
+        }
+        
+        showSuccess('Message deleted successfully');
+        
+    } catch (error) {
+        console.error('❌ Error deleting message:', error);
+        showError('Failed to delete message: ' + error.message);
+    }
+}
+
+// =====================================================
+// DELETE FILE FUNCTIONALITY
+// =====================================================
+
+async function deleteFile(fileId) {
+    if (!fileId) {
+        console.error('No file ID provided');
+        return;
+    }
+    
+    if (!confirm('Delete this file? This action cannot be undone and will remove the file from storage.')) {
+        return;
+    }
+    
+    try {
+        console.log('🗑️ Deleting file:', fileId);
+        
+        // Get file record first to delete from storage
+        const { data: fileRecord, error: fetchError } = await supabaseClient
+            .from('files')
+            .select('*')
+            .eq('id', fileId)
+            .eq('sender_id', currentUser.id) // Only allow deleting own files
+            .single();
+        
+        if (fetchError) {
+            throw fetchError;
+        }
+        
+        if (!fileRecord) {
+            throw new Error('File not found or you do not have permission to delete it');
+        }
+        
+        // Delete from storage
+        if (fileRecord.storage_path) {
+            const { error: storageError } = await supabaseClient.storage
+                .from('encrypted-files')
+                .remove([fileRecord.storage_path]);
+            
+            if (storageError) {
+                console.warn('⚠️ Storage deletion warning:', storageError);
+                // Continue even if storage deletion fails
+            } else {
+                console.log('✅ File deleted from storage');
+            }
+        }
+        
+        // Delete from database
+        const { error: dbError } = await supabaseClient
+            .from('files')
+            .delete()
+            .eq('id', fileId);
+        
+        if (dbError) {
+            throw dbError;
+        }
+        
+        console.log('✅ File deleted from database');
+        
+        // Remove from UI
+        const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileElement) {
+            fileElement.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => fileElement.remove(), 300);
+        }
+        
+        showSuccess('File deleted successfully');
+        
+        // Reload messages to update file list
+        await loadMessages();
+        
+    } catch (error) {
+        console.error('❌ Error deleting file:', error);
+        showError('Failed to delete file: ' + error.message);
+    }
 }

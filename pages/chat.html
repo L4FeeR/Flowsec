@@ -6,6 +6,7 @@
     <title>Chat - Flowsec</title>
     <link rel="stylesheet" href="../css/chat.css">
     <link rel="stylesheet" href="../css/file-messages.css">
+    <link rel="stylesheet" href="../css/emoji-picker.css">
     <link rel="stylesheet" href="../css/responsive.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -129,13 +130,32 @@
                 </button>
                 <input type="file" id="file-input" style="display: none;" accept="*/*">
                 <input type="text" id="message-input" placeholder="Type a message..." disabled>
-                <button class="btn-icon" title="Emoji">
+                <button class="btn-icon" id="emoji-btn" title="Emoji">
                     <i class="fas fa-smile"></i>
                 </button>
                 <button class="btn-send" id="send-btn" disabled>
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </footer>
+            
+            <!-- Emoji Picker -->
+            <div class="emoji-picker" id="emoji-picker" style="display: none;">
+                <div class="emoji-picker-header">
+                    <span>😀 Emojis</span>
+                    <button class="emoji-close" id="emoji-close">×</button>
+                </div>
+                <div class="emoji-categories">
+                    <button class="emoji-category active" data-category="smileys">😀</button>
+                    <button class="emoji-category" data-category="gestures">👋</button>
+                    <button class="emoji-category" data-category="hearts">❤️</button>
+                    <button class="emoji-category" data-category="animals">🐶</button>
+                    <button class="emoji-category" data-category="food">🍕</button>
+                    <button class="emoji-category" data-category="activities">⚽</button>
+                    <button class="emoji-category" data-category="travel">🚗</button>
+                    <button class="emoji-category" data-category="objects">💡</button>
+                </div>
+                <div class="emoji-grid" id="emoji-grid"></div>
+            </div>
         </main>
     </div>
 
