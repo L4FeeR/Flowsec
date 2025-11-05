@@ -147,6 +147,10 @@
                 const password = sessionStorage.getItem('pendingPassword') || user.email;
                 console.log('🔐 Using password for encryption:', password ? 'Yes' : 'No');
                 
+                // Store password in localStorage for future use (so user doesn't need to re-enter)
+                localStorage.setItem(`flowsec-userpass-${user.id}`, password);
+                console.log('✅ Password cached for future sessions');
+                
                 // Store private key locally (encrypted with user's password)
                 console.log('💾 Storing private key locally with userId:', user.id);
                 await EncryptionService.storePrivateKey(keyPair.privateKey, user.id, password);

@@ -202,9 +202,18 @@ async function loadPrivateKey() {
         
         console.log('🔍 Looking for private key for user:', currentUser.id);
         
-        // Get password from sessionStorage (set during login) or fallback to email
+        // Get password from multiple sources in priority order
         const { data: { user } } = await supabaseClient.auth.getUser();
-        const password = sessionStorage.getItem('tempPassword') || user.email;
+        let password = sessionStorage.getItem('tempPassword') || 
+                       sessionStorage.getItem('pendingPassword') ||
+                       localStorage.getItem(`flowsec-userpass-${currentUser.id}`) ||
+                       user.email;
+        
+        // If password was found in sessionStorage, store it in localStorage for future use
+        if (sessionStorage.getItem('tempPassword') || sessionStorage.getItem('pendingPassword')) {
+            localStorage.setItem(`flowsec-userpass-${currentUser.id}`, password);
+            console.log('✅ Password cached for future sessions');
+        }
         
         // Check if private key exists in localStorage for THIS user
         if (!EncryptionService.hasPrivateKey(currentUser.id)) {
@@ -617,7 +626,7 @@ async function loadMessages() {
                     console.log('📝 Retrieved sent message from cache');
                 }
                 // Decrypt E2EE message locally using the user's private key
-                else if (msg.encrypted_content && msg.iv && ((isSentByMe && msg.encrypted_aes_key_sender) || (!isSentByMe && msg.encrypted_aes_key))) {
+                else if (msg.encrypted_content && msg.iv) {
                     // Only use local decryption if we have the appropriate encrypted key
                     if (!privateKey) {
                         console.warn('🔒 Private key not loaded; cannot decrypt message');
@@ -626,22 +635,27 @@ async function loadMessages() {
                         try {
                             // Choose the correct encrypted AES key
                             let encryptedAESKey;
-                            if (isSentByMe && msg.encrypted_aes_key_sender) {
-                                // Sent message: use sender's encrypted key
-                                encryptedAESKey = msg.encrypted_aes_key_sender;
+                            if (isSentByMe) {
+                                // Sent message: try sender's encrypted key first, fallback to recipient key
+                                encryptedAESKey = msg.encrypted_aes_key_sender || msg.encrypted_aes_key;
                                 console.log('🔓 Decrypting sent message with sender key');
-                            } else if (!isSentByMe && msg.encrypted_aes_key) {
+                            } else {
                                 // Received message: use recipient's encrypted key
                                 encryptedAESKey = msg.encrypted_aes_key;
                                 console.log('🔓 Decrypting received message with recipient key');
                             }
 
-                            const packageObj = {
-                                encryptedAESKey: encryptedAESKey,
-                                iv: msg.iv,
-                                encryptedData: msg.encrypted_content
-                            };
-                            decryptedText = await EncryptionService.decryptMessage(packageObj, privateKey);
+                            if (encryptedAESKey) {
+                                const packageObj = {
+                                    encryptedAESKey: encryptedAESKey,
+                                    iv: msg.iv,
+                                    encryptedData: msg.encrypted_content
+                                };
+                                decryptedText = await EncryptionService.decryptMessage(packageObj, privateKey);
+                            } else {
+                                console.warn('⚠️ No encrypted AES key found for message');
+                                decryptedText = '[Message key not available]';
+                            }
                         } catch (e) {
                             console.error('❌ Failed to decrypt message locally:', e);
                             decryptedText = '[Failed to decrypt message]';
@@ -1324,7 +1338,7 @@ async function confirmSignOut() {
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && (key.startsWith('privateKey_') || key.startsWith('encrypted_privateKey_') || key.startsWith('flowsec-privatekey-'))) {
+            if (key && (key.startsWith('privateKey_') || key.startsWith('encrypted_privateKey_') || key.startsWith('flowsec-privatekey-') || key.startsWith('flowsec-userpass-'))) {
                 keysToRemove.push(key);
             }
         }
@@ -1337,7 +1351,7 @@ async function confirmSignOut() {
         sessionStorage.removeItem('tempPassword');
         sessionStorage.removeItem('pendingPassword');
         sessionStorage.removeItem('tempEmail');
-        console.log('🗑️ Cleared password from sessionStorage');
+        console.log('🗑️ Cleared password from sessionStorage and localStorage');
         
         console.log('✅ Cleared encryption keys from device');
         
