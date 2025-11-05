@@ -638,7 +638,13 @@ async function loadMessages() {
                             if (isSentByMe) {
                                 // Sent message: try sender's encrypted key first, fallback to recipient key
                                 encryptedAESKey = msg.encrypted_aes_key_sender || msg.encrypted_aes_key;
-                                console.log('🔓 Decrypting sent message with sender key');
+                                if (msg.encrypted_aes_key_sender) {
+                                    console.log('🔓 Decrypting sent message with sender key');
+                                } else if (msg.encrypted_aes_key) {
+                                    console.log('⚠️ Using recipient key for sent message (sender key missing)');
+                                } else {
+                                    console.error('❌ No encryption key found for sent message:', msg.id);
+                                }
                             } else {
                                 // Received message: use recipient's encrypted key
                                 encryptedAESKey = msg.encrypted_aes_key;
@@ -652,13 +658,26 @@ async function loadMessages() {
                                     encryptedData: msg.encrypted_content
                                 };
                                 decryptedText = await EncryptionService.decryptMessage(packageObj, privateKey);
+                                console.log('✅ Message decrypted successfully');
                             } else {
-                                console.warn('⚠️ No encrypted AES key found for message');
-                                decryptedText = '[Message key not available]';
+                                console.error('❌ No encrypted AES key found for message ID:', msg.id, {
+                                    isSent: isSentByMe,
+                                    hasSenderKey: !!msg.encrypted_aes_key_sender,
+                                    hasRecipientKey: !!msg.encrypted_aes_key
+                                });
+                                decryptedText = '[Message key not available - please check database schema]';
                             }
                         } catch (e) {
                             console.error('❌ Failed to decrypt message locally:', e);
-                            decryptedText = '[Failed to decrypt message]';
+                            console.error('Message details:', {
+                                id: msg.id,
+                                isSent: isSentByMe,
+                                hasSenderKey: !!msg.encrypted_aes_key_sender,
+                                hasRecipientKey: !!msg.encrypted_aes_key,
+                                hasIV: !!msg.iv,
+                                hasContent: !!msg.encrypted_content
+                            });
+                            decryptedText = '[Failed to decrypt message - check console for details]';
                         }
                     }
                 } else if (msg.app_ciphertext && msg.app_iv) {
@@ -764,14 +783,18 @@ async function sendMessage() {
         
         // Dual encryption: encrypt message for both sender and recipient
         let encryptedPackage;
-        if (currentUser.public_key) {
+        if (currentUser.public_key && privateKey) {
             const senderPub = await EncryptionService.importPublicKey(currentUser.public_key);
             encryptedPackage = await EncryptionService.encryptMessageDual(message, recipientPub, senderPub);
             console.log('🔐 Message encrypted for both sender and recipient');
+            console.log('✅ Dual encryption keys created:', {
+                recipientKey: !!encryptedPackage.encryptedAESKey,
+                senderKey: !!encryptedPackage.encryptedAESKeySender
+            });
         } else {
             // Fallback: encrypt only for recipient
             encryptedPackage = await EncryptionService.encryptMessage(message, recipientPub);
-            console.warn('⚠️ Sender has no public key - message encrypted only for recipient');
+            console.warn('⚠️ Sender has no public key or private key - message encrypted only for recipient');
         }
 
         const messagePayload = {
@@ -783,6 +806,13 @@ async function sendMessage() {
             iv: encryptedPackage.iv,
             created_at: new Date().toISOString()
         };
+        
+        console.log('📝 Message payload to save:', {
+            ...messagePayload,
+            encrypted_content: messagePayload.encrypted_content.substring(0, 50) + '...',
+            encrypted_aes_key: messagePayload.encrypted_aes_key.substring(0, 50) + '...',
+            encrypted_aes_key_sender: messagePayload.encrypted_aes_key_sender ? messagePayload.encrypted_aes_key_sender.substring(0, 50) + '...' : 'null'
+        });
 
         const { data: messageData, error: saveError } = await supabaseClient
             .from('messages')
@@ -1513,13 +1543,23 @@ async function handleFileSelect(event) {
 
         // Get recipient's public key
         const recipientPubKey = await EncryptionService.importPublicKey(selectedUser.public_key);
+        
+        // Get sender's public key for dual encryption
+        let senderPubKey = null;
+        if (currentUser.public_key) {
+            senderPubKey = await EncryptionService.importPublicKey(currentUser.public_key);
+            console.log('🔐 Enabling dual encryption for file (sender + recipient)');
+        } else {
+            console.warn('⚠️ Sender has no public key - file encrypted only for recipient');
+        }
 
         // Send file (encrypt, upload, scan with VirusTotal)
         const fileRecord = await fileService.sendFile(
             file,
             currentUser.id,
             selectedUser.id,
-            recipientPubKey
+            recipientPubKey,
+            senderPubKey
         );
 
         console.log('✅ File sent successfully:', fileRecord);
@@ -1640,11 +1680,16 @@ async function downloadFileFromChat(fileId) {
 
         if (!privateKey) {
             showError('Cannot decrypt file - private key not available. Please refresh and login again.');
+            // Reset buttons on error
+            allDownloadBtns.forEach(btn => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-download"></i>';
+            });
             return;
         }
 
         // Decrypt and download
-        const file = await fileService.receiveFile(fileRecord, privateKey);
+        const file = await fileService.receiveFile(fileRecord, privateKey, currentUser.id);
 
         // Create download link
         const url = URL.createObjectURL(file);

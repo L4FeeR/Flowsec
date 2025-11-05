@@ -10,9 +10,10 @@ class FileService {
      * @param {string} senderId - Sender user ID
      * @param {string} receiverId - Receiver user ID
      * @param {CryptoKey} recipientPublicKey - Recipient's RSA public key
+     * @param {CryptoKey} senderPublicKey - Sender's RSA public key (optional, for dual encryption)
      * @returns {Promise<Object>} File metadata and scan info
      */
-    async sendFile(file, senderId, receiverId, recipientPublicKey) {
+    async sendFile(file, senderId, receiverId, recipientPublicKey, senderPublicKey = null) {
         try {
             console.log('📤 Starting file send process:', file.name);
 
@@ -32,6 +33,24 @@ class FileService {
                 encryptedFile.key
             );
             const encryptedKey = btoa(String.fromCharCode(...new Uint8Array(encryptedKeyBuffer)));
+            
+            // 3. Also encrypt the AES key with sender's public key (for dual encryption)
+            let encryptedKeySender = null;
+            if (senderPublicKey) {
+                try {
+                    const encryptedKeySenderBuffer = await crypto.subtle.encrypt(
+                        { name: 'RSA-OAEP' },
+                        senderPublicKey,
+                        encryptedFile.key
+                    );
+                    encryptedKeySender = btoa(String.fromCharCode(...new Uint8Array(encryptedKeySenderBuffer)));
+                    console.log('✅ File encrypted for both sender and recipient');
+                } catch (senderEncryptError) {
+                    console.warn('⚠️ Failed to encrypt for sender, sender wont be able to download their own file:', senderEncryptError);
+                }
+            } else {
+                console.warn('⚠️ No sender public key provided - sender cannot decrypt their own files');
+            }
             
             // Convert IV to base64
             const ivBase64 = btoa(String.fromCharCode(...encryptedFile.iv));
@@ -92,6 +111,7 @@ class FileService {
                 file_type: file.type || 'application/octet-stream',
                 storage_path: fileName,
                 encrypted_key: encryptedKey,
+                encrypted_key_sender: encryptedKeySender,
                 iv: ivBase64,
                 vt_scan_id: vtScanId,
                 vt_status: vtStatus,
@@ -187,9 +207,10 @@ class FileService {
      * Download and decrypt a file
      * @param {Object} fileRecord - File metadata from database
      * @param {CryptoKey} privateKey - User's RSA private key
+     * @param {string} currentUserId - Current user ID (to determine if sender or recipient)
      * @returns {Promise<File>} Decrypted file
      */
-    async receiveFile(fileRecord, privateKey) {
+    async receiveFile(fileRecord, privateKey, currentUserId) {
         try {
             console.log('📥 Downloading file:', fileRecord.file_name);
 
@@ -208,16 +229,30 @@ class FileService {
             // 2. Convert encrypted blob to ArrayBuffer
             const encryptedArrayBuffer = await fileBlob.arrayBuffer();
 
-            // 3. Decrypt the AES key with private key
-            const encryptedKeyBuffer = Uint8Array.from(atob(fileRecord.encrypted_key), c => c.charCodeAt(0));
+            // 3. Determine which encrypted key to use (sender or recipient)
+            const isSender = fileRecord.sender_id === currentUserId;
+            let encryptedKeyToUse;
+            
+            if (isSender && fileRecord.encrypted_key_sender) {
+                // Use sender's encrypted key
+                encryptedKeyToUse = fileRecord.encrypted_key_sender;
+                console.log('🔓 Decrypting file with sender key (you sent this file)');
+            } else {
+                // Use recipient's encrypted key (or fallback for old files)
+                encryptedKeyToUse = fileRecord.encrypted_key;
+                console.log('🔓 Decrypting file with recipient key');
+            }
+
+            // 4. Decrypt the AES key with private key
+            const encryptedKeyBuffer = Uint8Array.from(atob(encryptedKeyToUse), c => c.charCodeAt(0));
             const decryptedKeyBuffer = await crypto.subtle.decrypt(
                 { name: 'RSA-OAEP' },
                 privateKey,
                 encryptedKeyBuffer
             );
 
-            // 4. Import the decrypted AES key
-            console.log('🔓 Decrypting file...');
+            // 5. Import the decrypted AES key
+            console.log('🔓 Decrypting file content...');
             const aesKey = await crypto.subtle.importKey(
                 'raw',
                 decryptedKeyBuffer,
@@ -226,7 +261,7 @@ class FileService {
                 ['decrypt']
             );
 
-            // 5. Decrypt the file with AES key
+            // 6. Decrypt the file with AES key
             const ivBuffer = Uint8Array.from(atob(fileRecord.iv), c => c.charCodeAt(0));
             const decryptedData = await crypto.subtle.decrypt(
                 { name: 'AES-GCM', iv: ivBuffer },
@@ -234,7 +269,7 @@ class FileService {
                 encryptedArrayBuffer
             );
 
-            // 6. Create File object
+            // 7. Create File object
             const file = new File([decryptedData], fileRecord.file_name, {
                 type: fileRecord.file_type
             });
