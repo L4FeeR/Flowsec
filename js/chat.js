@@ -588,10 +588,10 @@ async function loadMessages() {
         `;
         
         // Fetch messages between current user and selected user
-        // We store E2EE messages as: encrypted_content, encrypted_aes_key, iv
+        // We store E2EE messages as: encrypted_content, encrypted_aes_key, encrypted_aes_key_sender, iv
         const { data: messages, error } = await supabaseClient
             .from('messages')
-            .select('id, sender_id, receiver_id, encrypted_content, encrypted_aes_key, iv, app_ciphertext, app_iv, created_at')
+            .select('id, sender_id, receiver_id, encrypted_content, encrypted_aes_key, encrypted_aes_key_sender, iv, app_ciphertext, app_iv, created_at')
             .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedUser.id}),and(sender_id.eq.${selectedUser.id},receiver_id.eq.${currentUser.id})`)
             .order('created_at', { ascending: true });
         
